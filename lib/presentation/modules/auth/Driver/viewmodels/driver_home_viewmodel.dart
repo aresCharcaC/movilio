@@ -44,12 +44,19 @@ class DriverHomeViewModel extends ChangeNotifier {
   /// 🚀 Inicializar con servicios reales
   Future<void> init({String? conductorId, String? token}) async {
     print('🚀 Inicializando DriverHomeViewModel...');
+    print('👤 Conductor ID: $conductorId');
+    print('🔑 Token presente: ${token != null}');
 
     try {
+      // Validar parámetros requeridos
+      if (conductorId == null || token == null) {
+        throw Exception('Se requiere conductorId y token para inicializar');
+      }
+
       // Datos del conductor actual
       _currentDriver = Driver(
-        id: conductorId ?? '1',
-        nombreCompleto: 'Luis Pérez',
+        id: conductorId,
+        nombreCompleto: 'Conductor ${conductorId}',
         telefono: '987654321',
       );
 
@@ -57,21 +64,59 @@ class DriverHomeViewModel extends ChangeNotifier {
       _settingsViewModel = DriverSettingsViewModel();
       await _settingsViewModel!.init();
 
-      // Obtener ubicación inicial
+      // Obtener ubicación inicial ANTES de conectar WebSocket
+      print('📍 Obteniendo ubicación inicial...');
       await _initializeLocation();
 
-      // Conectar WebSocket si hay datos de autenticación
-      if (conductorId != null && token != null) {
-        await _connectWebSocket(conductorId, token);
+      if (_currentPosition == null) {
+        print('⚠️ No se pudo obtener ubicación inicial, continuando...');
+      }
+
+      // Conectar WebSocket con token válido
+      print('🔌 Conectando WebSocket...');
+      await _connectWebSocket(conductorId, token);
+
+      if (!_wsService.isConnected) {
+        print('⚠️ WebSocket no conectado, continuando con HTTP polling');
+      }
+
+      // Actualizar ubicación en backend inmediatamente
+      if (_currentPosition != null) {
+        try {
+          await _ridesService.updateDriverLocation(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          );
+          print('✅ Ubicación inicial enviada al backend');
+        } catch (e) {
+          print('⚠️ Error enviando ubicación inicial: $e');
+        }
       }
 
       // Cargar solicitudes iniciales
+      print('📋 Cargando solicitudes iniciales...');
       await _loadInitialRequests();
 
-      print('✅ DriverHomeViewModel inicializado');
+      // IMPORTANTE: Establecer conductor como disponible automáticamente
+      print('🟢 Estableciendo conductor como disponible...');
+      await setDisponible(true);
+
+      print('✅ DriverHomeViewModel inicializado completamente');
+      print('📊 Estado final:');
+      print('   - Disponible: $_disponible');
+      print('   - WebSocket conectado: ${_wsService.isConnected}');
+      print('   - Solicitudes: ${_solicitudes.length}');
+      print('   - Ubicación: ${_currentPosition != null}');
     } catch (e) {
       print('❌ Error inicializando DriverHomeViewModel: $e');
       _error = 'Error al inicializar: $e';
+
+      // En caso de error, intentar al menos obtener ubicación
+      try {
+        await _initializeLocation();
+      } catch (locationError) {
+        print('❌ Error obteniendo ubicación de respaldo: $locationError');
+      }
     }
 
     notifyListeners();

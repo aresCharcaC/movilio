@@ -50,16 +50,19 @@ class RideRequestModel {
           'Sin nombre',
       usuarioFoto: json['usuario_foto'] ?? json['usuario']?['foto_perfil'],
       usuarioRating:
-          json['usuario_rating']?.toDouble() ??
-          json['usuario']?['rating']?.toDouble(),
+          _parseDouble(json['usuario_rating']) ??
+          _parseDouble(json['usuario']?['rating']),
       usuarioVotos: json['usuario_votos'] ?? json['usuario']?['total_votos'],
       origenDireccion: json['origen_direccion'] ?? 'Origen no especificado',
-      origenLat: (json['origen_lat'] ?? 0.0).toDouble(),
-      origenLng: (json['origen_lng'] ?? 0.0).toDouble(),
+      origenLat: _parseDouble(json['origen_lat']) ?? 0.0,
+      origenLng: _parseDouble(json['origen_lng']) ?? 0.0,
       destinoDireccion: json['destino_direccion'] ?? 'Destino no especificado',
-      destinoLat: (json['destino_lat'] ?? 0.0).toDouble(),
-      destinoLng: (json['destino_lng'] ?? 0.0).toDouble(),
-      tarifaMaxima: (json['tarifa_maxima'] ?? 0.0).toDouble(),
+      destinoLat: _parseDouble(json['destino_lat']) ?? 0.0,
+      destinoLng: _parseDouble(json['destino_lng']) ?? 0.0,
+      tarifaMaxima:
+          _parseDouble(json['tarifa_maxima']) ??
+          _parseDouble(json['tarifa_referencial']) ??
+          0.0,
       metodosPago:
           json['metodos_pago'] != null
               ? List<String>.from(json['metodos_pago'])
@@ -69,9 +72,25 @@ class RideRequestModel {
           json['fecha_solicitud'] != null
               ? DateTime.parse(json['fecha_solicitud'])
               : DateTime.now(),
-      distanciaKm: json['distancia_km']?.toDouble(),
+      distanciaKm: _parseDouble(json['distancia_km']),
       tiempoEstimadoMinutos: json['tiempo_estimado_minutos'],
     );
+  }
+
+  /// Método auxiliar para convertir valores a double de forma segura
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (e) {
+        print('⚠️ Error parseando double: $value -> $e');
+        return null;
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {

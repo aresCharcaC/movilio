@@ -47,20 +47,22 @@ Future<void> initializeDependencies() async {
 
 void _setupDio() {
   print('Configurando Dio...');
-  
+
   // Usar la configuración desde AppConfig
   final baseUrl = AppConfig.baseUrl;
   print('Base URL desde AppConfig: "$baseUrl"');
-  
+
   // Crear instancia de Dio con configuración completa
-  final dio = Dio(BaseOptions(
-    baseUrl: baseUrl,
-    connectTimeout: AppConfig.connectTimeout,
-    receiveTimeout: AppConfig.receiveTimeout,
-    sendTimeout: AppConfig.sendTimeout,
-    headers: ApiEndpoints.baseHeaders,
-  ));
-  
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: AppConfig.connectTimeout,
+      receiveTimeout: AppConfig.receiveTimeout,
+      sendTimeout: AppConfig.sendTimeout,
+      headers: ApiEndpoints.baseHeaders,
+    ),
+  );
+
   // Agregar interceptor para debugging
   dio.interceptors.add(
     LogInterceptor(
@@ -81,40 +83,56 @@ void _setupDio() {
 
 void _setupServices() {
   print('Configurando servicios...');
+
+  // SharedPreferences ya debe estar registrado en main.dart
+  // No necesitamos registrarlo aquí
+
   // Registrar ApiClient primero
-  sl.registerLazySingleton<ApiClient>(() => ApiClient());
-  
+  sl.registerLazySingleton<ApiClient>(() {
+    print('🔧 Creando ApiClient...');
+    final apiClient = ApiClient();
+    print('✅ ApiClient creado correctamente');
+    return apiClient;
+  });
+
   // Luego las data sources
-  sl.registerLazySingleton<DriverRemoteDataSource>(
-    () => DriverRemoteDataSource(apiClient: sl<ApiClient>()),
-  );
-  
+  sl.registerLazySingleton<DriverRemoteDataSource>(() {
+    print('🔧 Creando DriverRemoteDataSource...');
+    final dataSource = DriverRemoteDataSource(apiClient: sl<ApiClient>());
+    print('✅ DriverRemoteDataSource creado correctamente');
+    return dataSource;
+  });
+
   sl.registerLazySingleton<DriverLocalDataSource>(
     () => DriverLocalDataSource(),
   );
 
   // Registrar RideRemoteDataSource
-  sl.registerLazySingleton<RideRemoteDataSource>(
-    () => RideRemoteDataSource(apiClient: sl<ApiClient>()),
-  );
+  sl.registerLazySingleton<RideRemoteDataSource>(() {
+    print('🔧 Creando RideRemoteDataSource...');
+    final dataSource = RideRemoteDataSource(apiClient: sl<ApiClient>());
+    print('✅ RideRemoteDataSource creado correctamente');
+    return dataSource;
+  });
+
   // Registrar OfertaViajeRemoteDataSource
   sl.registerLazySingleton<OfertaViajeRemoteDataSource>(
-    () => OfertaViajeRemoteDataSourceImpl(
-      sl<ApiClient>(),
-    ),
+    () => OfertaViajeRemoteDataSourceImpl(sl<ApiClient>()),
   );
-  
+
   // FileUploadService
   sl.registerLazySingleton<FileUploadService>(() {
     final service = FileUploadService(sl<Dio>());
-    print('FileUploadService creado con Dio base URL: ${sl<Dio>().options.baseUrl}');
+    print(
+      'FileUploadService creado con Dio base URL: ${sl<Dio>().options.baseUrl}',
+    );
     return service;
   });
 }
 
 void _setupRepositories() {
   print('Configurando repositorios...');
-  
+
   // DriverRepository
   sl.registerLazySingleton<DriverRepository>(
     () => DriverRepositoryImpl(
@@ -127,9 +145,7 @@ void _setupRepositories() {
 
   // RideRepository
   sl.registerLazySingleton<RideRepository>(
-    () => RideRepositoryImpl(
-      remoteDataSource: sl<RideRemoteDataSource>(),
-    ),
+    () => RideRepositoryImpl(remoteDataSource: sl<RideRemoteDataSource>()),
   );
 
   // Repositories
@@ -159,18 +175,13 @@ void _setupViewModels() {
     () => RideProvider(sl<CreateRideRequestUseCase>()),
   );
 
-  
   // UseCases
   sl.registerLazySingleton<ObtenerOfertasUseCase>(
-    () => ObtenerOfertasUseCase(
-      repository: sl<OfertaViajeRepository>(),
-    ),
+    () => ObtenerOfertasUseCase(repository: sl<OfertaViajeRepository>()),
   );
   // ViewModels
   sl.registerFactory<OfertasViewModel>(
-    () => OfertasViewModel(
-      obtenerOfertasUseCase: sl<ObtenerOfertasUseCase>(),
-    ),
+    () => OfertasViewModel(obtenerOfertasUseCase: sl<ObtenerOfertasUseCase>()),
   );
 }
 
@@ -186,53 +197,41 @@ void diagnosticDependencies() {
 
     final fileService = sl<FileUploadService>();
     print('✅ FileUploadService registrado correctamente');
-    
+
     final driverRepository = sl<DriverRepository>();
     print('✅ DriverRepository registrado correctamente');
-    
+
     final driverViewModel = sl<DriverAuthViewModel>();
     print('✅ DriverAuthViewModel registrado correctamente');
 
     // Diagnóstico del módulo de viajes
     final rideDataSource = sl<RideRemoteDataSource>();
     print('✅ RideRemoteDataSource registrado correctamente');
-    
+
     final rideRepository = sl<RideRepository>();
     print('✅ RideRepository registrado correctamente');
-    
+
     final rideUseCase = sl<CreateRideRequestUseCase>();
     print('✅ CreateRideRequestUseCase registrado correctamente');
-    
+
     final rideProvider = sl<RideProvider>();
     print('✅ RideProvider registrado correctamente');
-    
+
     // Ofertas de Viaje
     final ofertaViajeDataSource = sl<OfertaViajeRemoteDataSource>();
     print('✅ OfertaViajeRemoteDataSource registrado correctamente');
-    
+
     final ofertaViajeRepository = sl<OfertaViajeRepository>();
     print('✅ OfertaViajeRepository registrado correctamente');
-    
+
     final obtenerOfertasUseCase = sl<ObtenerOfertasUseCase>();
     print('✅ ObtenerOfertasUseCase registrado correctamente');
-    
+
     final ofertasViewModel = sl<OfertasViewModel>();
     print('✅ OfertasViewModel registrado correctamente');
-    
   } catch (e) {
     print('❌ Error en diagnóstico: $e');
   }
 
   print('=== FIN DIAGNÓSTICO ===\n');
-}
-
-void _setupCore() {
-  print('Configurando servicios core...');
-  
-  // SharedPreferences
-  sl.registerLazySingleton<SharedPreferences>(
-    () => throw UnimplementedError('SharedPreferences debe ser inicializado'),
-  );
-
-  // ... existing code ...
 }

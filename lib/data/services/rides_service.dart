@@ -15,7 +15,9 @@ class RidesService {
   /// 🧭 Obtener solicitudes cercanas al conductor
   Future<List<RideRequestModel>> getNearbyRequests() async {
     try {
-      final response = await _apiClient.get('/api/rides/driver/nearby-requests');
+      final response = await _apiClient.get(
+        '/api/rides/driver/nearby-requests',
+      );
       if (response['success'] == true) {
         final data = response['data'];
         final nearbyRequests = data['nearby_requests'] as List;

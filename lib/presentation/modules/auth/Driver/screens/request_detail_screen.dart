@@ -325,7 +325,12 @@ class RequestDetailScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    solicitud.direccion,
+                    _getProperty(solicitud, [
+                          'direccion',
+                          'origenDireccion',
+                          'origen_direccion',
+                        ]) ??
+                        'Dirección no especificada',
                     style: AppTextStyles.poppinsHeading1.copyWith(
                       fontWeight: FontWeight.w500,
                       color: AppColors.textPrimary,
@@ -374,7 +379,11 @@ class RequestDetailScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    solicitud.destinoDireccion,
+                    _getProperty(solicitud, [
+                          'destinoDireccion',
+                          'destino_direccion',
+                        ]) ??
+                        'Destino no especificado',
                     style: AppTextStyles.poppinsHeading1.copyWith(
                       fontWeight: FontWeight.w500,
                       color: AppColors.textPrimary,
@@ -414,7 +423,7 @@ class RequestDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'S/ ${solicitud.precio.toStringAsFixed(2)}',
+                  'S/ ${(_getDoubleProperty(solicitud, ['precio', 'tarifaMaxima', 'tarifa_maxima', 'precioSugerido', 'precio_sugerido']) ?? 0.0).toStringAsFixed(2)}',
                   style: AppTextStyles.poppinsHeading2.copyWith(
                     color: Colors.green[700],
                     fontWeight: FontWeight.bold,
@@ -442,26 +451,33 @@ class RequestDetailScreen extends StatelessWidget {
                   spacing: 4,
                   runSpacing: 4,
                   children:
-                      solicitud.metodos.map((metodo) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _getPaymentMethodColor(metodo),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            metodo,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                      (_getListProperty(solicitud, [
+                                'metodos',
+                                'metodosPago',
+                                'metodos_pago',
+                              ]) ??
+                              <String>[])
+                          .map((metodo) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getPaymentMethodColor(metodo),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                metodo,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            );
+                          })
+                          .toList(),
                 ),
               ],
             ),
@@ -486,7 +502,7 @@ class RequestDetailScreen extends StatelessWidget {
           elevation: 2,
         ),
         child: Text(
-          'Aceptar por S/ ${solicitud.precio.toStringAsFixed(2)}',
+          'Aceptar por S/ ${(_getDoubleProperty(solicitud, ['precio', 'tarifaMaxima', 'tarifa_maxima', 'precioSugerido', 'precio_sugerido']) ?? 0.0).toStringAsFixed(2)}',
           style: AppTextStyles.poppinsHeading1.copyWith(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -511,10 +527,19 @@ class RequestDetailScreen extends StatelessWidget {
   }
 
   void _handleAccept(BuildContext context) {
+    final nombre =
+        _getProperty(solicitud, [
+          'nombre',
+          'usuarioNombre',
+          'usuario_nombre',
+        ]) ??
+        'Usuario';
+    final rideId = _getProperty(solicitud, ['rideId', 'id', 'ride_id']) ?? '';
+
     // Mostrar confirmación
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Solicitud de ${solicitud.nombre} aceptada'),
+        content: Text('Solicitud de $nombre aceptada'),
         backgroundColor: Colors.green[600],
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
@@ -523,9 +548,83 @@ class RequestDetailScreen extends StatelessWidget {
     );
 
     // Eliminar solicitud de la lista
-    context.read<DriverHomeViewModel>().rejectRequest(solicitud.rideId);
+    if (rideId.isNotEmpty) {
+      context.read<DriverHomeViewModel>().rejectRequest(rideId);
+    }
 
     // Regresar a la pantalla principal
     Navigator.pop(context);
+  }
+
+  /// Método auxiliar para obtener propiedades de forma segura
+  static dynamic _getProperty(dynamic obj, List<String> keys) {
+    if (obj == null) return null;
+
+    for (String key in keys) {
+      try {
+        if (obj is Map<String, dynamic> && obj.containsKey(key)) {
+          return obj[key];
+        } else if (obj.runtimeType.toString().contains('RideRequestModel')) {
+          // Si es un objeto modelo, intentar acceder por reflexión o propiedades conocidas
+          switch (key) {
+            case 'foto':
+            case 'usuarioFoto':
+              return obj.usuarioFoto;
+            case 'nombre':
+            case 'usuarioNombre':
+              return obj.usuarioNombre;
+            case 'direccion':
+            case 'origenDireccion':
+              return obj.origenDireccion;
+            case 'metodos':
+            case 'metodosPago':
+              return obj.metodosPago;
+            case 'rating':
+            case 'usuarioRating':
+              return obj.usuarioRating;
+            case 'votos':
+            case 'usuarioVotos':
+              return obj.usuarioVotos;
+            case 'precio':
+            case 'tarifaMaxima':
+              return obj.tarifaMaxima;
+            case 'destinoDireccion':
+              return obj.destinoDireccion;
+            case 'rideId':
+            case 'id':
+              return obj.id;
+          }
+        }
+      } catch (e) {
+        // Continuar con la siguiente clave si hay error
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /// Método auxiliar para obtener listas de forma segura
+  static List<String>? _getListProperty(dynamic obj, List<String> keys) {
+    final value = _getProperty(obj, keys);
+    if (value == null) return null;
+    if (value is List<String>) return value;
+    if (value is List) return value.map((e) => e.toString()).toList();
+    return null;
+  }
+
+  /// Método auxiliar para obtener doubles de forma segura
+  static double? _getDoubleProperty(dynamic obj, List<String> keys) {
+    final value = _getProperty(obj, keys);
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }
 }

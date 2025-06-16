@@ -168,15 +168,57 @@ class DriverHomeScreen extends StatelessWidget {
     String? conductorId,
   ) async {
     try {
+      print('🚀 Inicializando DriverHomeViewModel desde pantalla...');
+      print('👤 Conductor ID recibido: $conductorId');
+
       // Obtener token de forma asíncrona
       final token = await authVm.getAccessToken();
+      print('🔑 Token obtenido: ${token != null ? "✅ Sí" : "❌ No"}');
+
+      // Convertir conductorId a String si es necesario
+      String? conductorIdStr;
+      if (conductorId != null) {
+        conductorIdStr = conductorId.toString();
+      } else if (authVm.currentDriver?.id != null) {
+        conductorIdStr = authVm.currentDriver!.id.toString();
+      }
+
+      print('👤 Conductor ID final: $conductorIdStr');
+
+      // Validar que tenemos los datos mínimos necesarios
+      if (conductorIdStr == null) {
+        print('❌ No se pudo obtener el ID del conductor');
+        throw Exception('ID del conductor no disponible');
+      }
 
       // Inicializar con los datos obtenidos
-      await viewModel.init(conductorId: conductorId, token: token);
+      await viewModel.init(conductorId: conductorIdStr, token: token);
+      print('✅ DriverHomeViewModel inicializado desde pantalla');
     } catch (e) {
       print('❌ Error inicializando con autenticación: $e');
-      // Inicializar sin token como fallback
-      await viewModel.init(conductorId: conductorId, token: null);
+
+      // Intentar obtener el ID del conductor de otra forma
+      String? fallbackConductorId;
+      try {
+        if (authVm.currentDriver?.id != null) {
+          fallbackConductorId = authVm.currentDriver!.id.toString();
+        }
+      } catch (idError) {
+        print('❌ Error obteniendo ID de conductor: $idError');
+      }
+
+      // Inicializar con datos mínimos como fallback
+      if (fallbackConductorId != null) {
+        print('🔄 Intentando inicialización de respaldo...');
+        try {
+          await viewModel.init(conductorId: fallbackConductorId, token: null);
+          print('✅ Inicialización de respaldo exitosa');
+        } catch (fallbackError) {
+          print('❌ Error en inicialización de respaldo: $fallbackError');
+        }
+      } else {
+        print('❌ No se puede inicializar: falta ID del conductor');
+      }
     }
   }
 
