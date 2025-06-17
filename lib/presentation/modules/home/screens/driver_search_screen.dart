@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:joya_express/core/constants/app_colors.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
+import 'package:joya_express/presentation/providers/ride_provider.dart';
 
 /// Pantalla de búsqueda de conductor con efecto radar
 /// Muestra una animación tipo radar sin usar Google Maps
@@ -142,7 +144,7 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
     _searchTimer?.cancel();
     _isSearching = false;
 
-    // TODO: Cancelar solicitud en el backend
+    // Cancelar solicitud en el backend
     _cancelRideRequest();
 
     _showTimeoutDialog();
@@ -152,15 +154,9 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
     try {
       print('❌ Cancelando y eliminando solicitud de viaje...');
 
-      // Llamar al endpoint para cancelar y eliminar la búsqueda
-      // TODO: Implementar llamada real al backend
-      // final response = await http.delete(
-      //   Uri.parse('${AppConfig.baseUrl}/api/rides/cancel-and-delete'),
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //     'Authorization': 'Bearer $token',
-      //   },
-      // );
+      // Usar el provider para cancelar la búsqueda
+      final rideProvider = Provider.of<RideProvider>(context, listen: false);
+      await rideProvider.cancelAndDeleteActiveSearch();
 
       print('✅ Solicitud eliminada del backend');
     } catch (e) {
@@ -257,9 +253,9 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        // Prevenir que el usuario salga accidentalmente
-        _cancelSearch();
-        return false;
+        // Cuando el usuario intenta salir, cancelar automáticamente la solicitud
+        await _cancelRideRequest();
+        return true; // Permitir salir después de cancelar
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF1A1A2E),

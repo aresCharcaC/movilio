@@ -41,7 +41,7 @@ class ApiEndpoints {
       return baseUrl.replaceFirst('http://', 'ws://');
     }
 
-    return 'wss://38db-38-255-105-31.ngrok-free.app:443';
+    return 'wss://31a9-38-255-105-31.ngrok-free.app:443';
   }
 
   // ✅ MANTENER ENDPOINTS ORIGINALES EXISTENTES
@@ -72,6 +72,7 @@ class ApiEndpoints {
   static const String getRide = '/api/rides/';
   static const String getActiveRides = '/api/rides/active';
   static const String cancelRide = '/api/rides/cancel/';
+  static const String cancelAndDeleteSearch = '/api/rides/cancel-and-delete';
   static const String getRideOffers = '/api/rides/offers/';
 
   // Endpoints para conductores

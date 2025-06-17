@@ -1,20 +1,25 @@
 import 'package:flutter/foundation.dart';
 import 'package:joya_express/domain/entities/ride_request_entity.dart';
 import 'package:joya_express/domain/usecases/create_ride_request_usecase.dart';
+import 'package:joya_express/domain/usecases/cancel_and_delete_active_search_usecase.dart';
 import 'dart:developer' as developer;
 // Provider que maneja el estado de la UI para solicitar viajes
 // Extiende ChangeNotifier para notificar cambios a los widgets que lo escuchan
 
 class RideProvider extends ChangeNotifier {
-  // Caso de uso que maneja la lógica de creación de viajes
+  // Casos de uso que manejan la lógica de negocio
   final CreateRideRequestUseCase _createRideRequestUseCase;
-  
+  final CancelAndDeleteActiveSearchUseCase _cancelAndDeleteActiveSearchUseCase;
+
   RideRequest? _currentRide;
   List<RideRequest> _activeRides = [];
   bool _isLoading = false;
   String? _error;
-  // Constructor que recibe el caso de uso por inyección de dependencia
-  RideProvider(this._createRideRequestUseCase);
+  // Constructor que recibe los casos de uso por inyección de dependencia
+  RideProvider(
+    this._createRideRequestUseCase,
+    this._cancelAndDeleteActiveSearchUseCase,
+  );
 
   // Getters
   RideRequest? get currentRide => _currentRide;
@@ -29,14 +34,18 @@ class RideProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      developer.log('🚗 Iniciando creación de solicitud de viaje...', 
-          name: 'RideProvider');
+      developer.log(
+        '🚗 Iniciando creación de solicitud de viaje...',
+        name: 'RideProvider',
+      );
 
       _currentRide = await _createRideRequestUseCase(request);
       _activeRides.add(_currentRide!);
 
-      developer.log('✅ Solicitud de viaje creada exitosamente', 
-          name: 'RideProvider');
+      developer.log(
+        '✅ Solicitud de viaje creada exitosamente',
+        name: 'RideProvider',
+      );
 
       _isLoading = false;
       notifyListeners();
@@ -44,8 +53,10 @@ class RideProvider extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       _error = e.toString();
-      developer.log('❌ Error al crear solicitud de viaje: $e', 
-          name: 'RideProvider');
+      developer.log(
+        '❌ Error al crear solicitud de viaje: $e',
+        name: 'RideProvider',
+      );
       notifyListeners();
       return false;
     }
@@ -63,4 +74,38 @@ class RideProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
-} 
+
+  // Método para cancelar y eliminar completamente la búsqueda activa
+  Future<bool> cancelAndDeleteActiveSearch() async {
+    try {
+      developer.log(
+        '🗑️ Cancelando y eliminando búsqueda activa...',
+        name: 'RideProvider',
+      );
+
+      // Llamar al caso de uso para eliminar la búsqueda en el backend
+      await _cancelAndDeleteActiveSearchUseCase();
+
+      // Limpiar el estado local después de la eliminación exitosa
+      _currentRide = null;
+      _activeRides.clear();
+      _error = null;
+
+      developer.log(
+        '✅ Búsqueda activa eliminada exitosamente',
+        name: 'RideProvider',
+      );
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      developer.log(
+        '❌ Error al eliminar búsqueda activa: $e',
+        name: 'RideProvider',
+      );
+      notifyListeners();
+      return false;
+    }
+  }
+}

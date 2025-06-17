@@ -121,9 +121,14 @@ class _CompactRequestCard extends StatelessWidget {
         0;
     final precio =
         _getDoubleProperty(request, [
+          'precioUsuario',
+          'precio_usuario',
           'precio',
           'tarifaMaxima',
           'tarifa_maxima',
+          'tarifa_referencial',
+          'precioSugerido',
+          'precio_sugerido',
         ]) ??
         0.0;
 
@@ -362,7 +367,11 @@ class _CompactRequestCard extends StatelessWidget {
     for (String key in keys) {
       try {
         if (obj is Map<String, dynamic> && obj.containsKey(key)) {
-          return obj[key];
+          final value = obj[key];
+          // Si el valor no es null y no es una cadena vacía, devolverlo
+          if (value != null && value.toString().trim().isNotEmpty) {
+            return value;
+          }
         } else if (obj.runtimeType.toString().contains('RideRequestModel')) {
           // Si es un objeto modelo, intentar acceder por reflexión o propiedades conocidas
           switch (key) {

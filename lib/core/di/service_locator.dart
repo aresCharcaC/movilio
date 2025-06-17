@@ -15,6 +15,7 @@ import 'package:joya_express/data/datasources/ride_remote_datasource.dart';
 import 'package:joya_express/data/repositories_impl/ride_repository_impl.dart';
 import 'package:joya_express/domain/repositories/ride_repository.dart';
 import 'package:joya_express/domain/usecases/create_ride_request_usecase.dart';
+import 'package:joya_express/domain/usecases/cancel_and_delete_active_search_usecase.dart';
 import 'package:joya_express/presentation/providers/ride_provider.dart';
 import 'package:joya_express/data/repositories/oferta_viaje_repository_impl.dart';
 import 'package:joya_express/domain/repositories/oferta_viaje_repository.dart';
@@ -170,9 +171,17 @@ void _setupViewModels() {
     () => CreateRideRequestUseCase(sl<RideRepository>()),
   );
 
+  // Registrar el caso de uso para cancelar búsqueda activa
+  sl.registerLazySingleton<CancelAndDeleteActiveSearchUseCase>(
+    () => CancelAndDeleteActiveSearchUseCase(sl<RideRepository>()),
+  );
+
   // Registrar el provider de Ride
   sl.registerFactory<RideProvider>(
-    () => RideProvider(sl<CreateRideRequestUseCase>()),
+    () => RideProvider(
+      sl<CreateRideRequestUseCase>(),
+      sl<CancelAndDeleteActiveSearchUseCase>(),
+    ),
   );
 
   // UseCases

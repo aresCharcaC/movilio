@@ -1,4 +1,5 @@
 import '../entities/ride_request_entity.dart';
+
 // Interfaz abstracta que define qué operaciones podemos hacer con viajes
 // Esta interfaz pertenece al dominio y no sabe nada de implementación
 abstract class RideRepository {
@@ -22,4 +23,10 @@ abstract class RideRepository {
   // Retorna: Future<void> - No retorna datos, solo confirma la cancelación
   // Nota: Este método puede lanzar excepciones si el viaje no existe o no puede ser cancelado
   Future<void> cancelRideRequest(String id);
-} 
+
+  // Método para cancelar y eliminar completamente la búsqueda activa del usuario
+  // Elimina todas las solicitudes pendientes sin guardarlas como canceladas
+  // Retorna: Future<void> - No retorna datos, solo confirma la eliminación
+  // Nota: Este método se usa cuando el usuario sale de la pantalla de búsqueda
+  Future<void> cancelAndDeleteActiveSearch();
+}

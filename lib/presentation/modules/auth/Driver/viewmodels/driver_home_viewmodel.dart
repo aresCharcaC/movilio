@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:joya_express/data/models/user/ride_request_model.dart';
+import 'package:joya_express/data/models/driver_nearby_request_model.dart';
 import '../../../../../data/services/rides_service.dart';
 import '../../../../../data/services/websocket_service.dart';
 import 'driver_settings_viewmodel.dart';
@@ -180,55 +181,100 @@ class DriverHomeViewModel extends ChangeNotifier {
 
         for (final requestData in nearbyRequests) {
           try {
-            // Convertir cada solicitud al formato esperado
-            final solicitudFormateada = _formatearSolicitudWebSocket(
-              requestData,
+            // Usar el nuevo modelo para parsear correctamente los datos
+            final nearbyRequest = DriverNearbyRequestModel.fromWebSocketData(
+              requestData as Map<String, dynamic>,
             );
+
+            // Convertir al formato esperado por el widget
+            final solicitudFormateada = nearbyRequest.toDisplayFormat();
             _solicitudes.add(solicitudFormateada);
+
+            print('✅ Solicitud parseada: ${nearbyRequest.toString()}');
           } catch (e) {
             print('⚠️ Error formateando solicitud: $e');
+            print('📄 Datos problemáticos: $requestData');
+
+            // Fallback: usar el método anterior si el nuevo falla
+            try {
+              final solicitudFormateada = _formatearSolicitudWebSocket(
+                requestData,
+              );
+              _solicitudes.add(solicitudFormateada);
+              print('✅ Solicitud parseada con método fallback');
+            } catch (fallbackError) {
+              print('❌ Error también en método fallback: $fallbackError');
+            }
           }
         }
 
-        // Aplicar filtros y ordenamiento si tenemos configuración
-        if (_settingsViewModel != null && _currentPosition != null) {
+        // Filtrar por distancia usando la distancia ya calculada por el backend
+        if (_currentPosition != null) {
+          final maxDistanceKm =
+              (_settingsViewModel?.searchRadiusMeters ?? 5000.0) / 1000.0;
+
+          final solicitudesFiltradas =
+              _solicitudes.where((solicitud) {
+                final distanciaConductor =
+                    solicitud['distanciaConductor'] ??
+                    solicitud['distancia_conductor'] ??
+                    double.infinity;
+
+                final dentroDelRadio = distanciaConductor <= maxDistanceKm;
+
+                if (!dentroDelRadio) {
+                  print(
+                    '❌ Solicitud ${solicitud['id']} filtrada - ${(distanciaConductor * 1000).round()}m (muy lejos)',
+                  );
+                } else {
+                  print(
+                    '✅ Solicitud ${solicitud['id']} dentro del radio - ${(distanciaConductor * 1000).round()}m',
+                  );
+                }
+
+                return dentroDelRadio;
+              }).toList();
+
+          _solicitudes = solicitudesFiltradas;
+          print(
+            '🔍 Filtrado: ${_solicitudes.length} de $count solicitudes mostradas (radio: ${maxDistanceKm.toStringAsFixed(1)}km)',
+          );
+        }
+
+        // Aplicar filtros y ordenamiento adicionales si tenemos configuración
+        if (_settingsViewModel != null) {
           _solicitudes = _settingsViewModel!.applyFilters(
             _solicitudes,
             getPrice:
                 (solicitud) =>
+                    solicitud['precioUsuario']?.toDouble() ??
+                    solicitud['precio_usuario']?.toDouble() ??
                     solicitud['precioSugerido']?.toDouble() ??
                     solicitud['precio_sugerido']?.toDouble() ??
-                    solicitud['tarifa_referencial']?.toDouble() ??
                     0.0,
           );
 
           _solicitudes = _settingsViewModel!.applySorting(
             _solicitudes,
-            getDistance: (solicitud) {
-              double origenLat =
-                  solicitud['origenLat'] ?? solicitud['origen_lat'] ?? 0.0;
-              double origenLng =
-                  solicitud['origenLng'] ?? solicitud['origen_lng'] ?? 0.0;
-              return _calculateHaversineDistance(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                    origenLat,
-                    origenLng,
-                  ) /
-                  1000; // Convertir a km
-            },
+            getDistance:
+                (solicitud) =>
+                    solicitud['distanciaConductor']?.toDouble() ??
+                    solicitud['distancia_conductor']?.toDouble() ??
+                    0.0,
             getPrice:
                 (solicitud) =>
+                    solicitud['precioUsuario']?.toDouble() ??
+                    solicitud['precio_usuario']?.toDouble() ??
                     solicitud['precioSugerido']?.toDouble() ??
                     solicitud['precio_sugerido']?.toDouble() ??
-                    solicitud['tarifa_referencial']?.toDouble() ??
                     0.0,
             getTime: (solicitud) {
               try {
                 String? fechaStr =
+                    solicitud['fechaSolicitud'] ??
+                    solicitud['fecha_solicitud'] ??
                     solicitud['fechaCreacion'] ??
-                    solicitud['fecha_creacion'] ??
-                    solicitud['fecha_solicitud'];
+                    solicitud['fecha_creacion'];
                 if (fechaStr != null) {
                   return DateTime.parse(fechaStr);
                 }

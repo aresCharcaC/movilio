@@ -86,7 +86,7 @@ class RideRequestModel extends RideRequest {
           _extractAddress(viajeData, 'destino') ??
           viajeData['destino_direccion'],
 
-      precioSugerido: viajeData['precio_sugerido']?.toDouble(),
+      precioSugerido: _parseDouble(viajeData['precio_sugerido']),
       estado: viajeData['estado'],
       fechaCreacion: _parseDate(
         viajeData['fecha_creacion'] ?? viajeData['fecha_solicitud'],
@@ -134,6 +134,21 @@ class RideRequestModel extends RideRequest {
     } catch (e) {
       return null;
     }
+  }
+
+  // Método auxiliar para parsear doubles de forma segura
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    try {
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        return double.parse(value);
+      }
+    } catch (e) {
+      // Si hay error en la conversión, devolver null
+    }
+    return null;
   }
 
   // Método que convierte el objeto RideRequestModel a Map<String, dynamic>

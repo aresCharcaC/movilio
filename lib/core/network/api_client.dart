@@ -106,6 +106,24 @@ class ApiClient {
     }
   }
 
+  // DELETE Request con manejo de cookies
+  Future<Map<String, dynamic>> delete(String endpoint) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await _client
+          .delete(
+            Uri.parse('${ApiEndpoints.baseUrl}$endpoint'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      _handleCookies(response);
+      return _handleResponse(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // Obtener headers con cookies de sesión
   Future<Map<String, String>> _getHeaders() async {
     final headers = Map<String, String>.from(ApiEndpoints.jsonHeaders);

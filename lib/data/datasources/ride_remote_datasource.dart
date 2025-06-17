@@ -143,6 +143,36 @@ class RideRemoteDataSource {
     }
   }
 
+  /// Cancela y elimina completamente la búsqueda activa del usuario
+  Future<void> cancelAndDeleteActiveSearch() async {
+    try {
+      developer.log(
+        '🗑️ Cancelando y eliminando búsqueda activa...',
+        name: 'RideRemoteDataSource',
+      );
+
+      await _apiClient.delete(ApiEndpoints.cancelAndDeleteSearch);
+
+      developer.log(
+        '✅ Búsqueda activa eliminada exitosamente',
+        name: 'RideRemoteDataSource',
+      );
+    } on AuthException catch (e) {
+      developer.log(
+        '🔑 Error de autenticación: ${e.message}',
+        name: 'RideRemoteDataSource',
+      );
+      await _refreshToken();
+      return cancelAndDeleteActiveSearch();
+    } catch (e) {
+      developer.log(
+        '❌ Error al eliminar búsqueda activa: $e',
+        name: 'RideRemoteDataSource',
+      );
+      rethrow;
+    }
+  }
+
   /// Refresca el token de autenticación
   Future<void> _refreshToken() async {
     try {
