@@ -6,6 +6,7 @@ import 'package:joya_express/core/constants/app_colors.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
 import 'package:joya_express/data/models/ride_request_model.dart';
 import 'package:joya_express/domain/repositories/ride_repository.dart';
+import 'package:joya_express/presentation/modules/auth/Driver/widgets/passenger_info_card.dart';
 import 'package:get_it/get_it.dart';
 
 /// Pantalla de detalles de solicitud de viaje para conductores
@@ -396,8 +397,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Card con información del viaje (reutilizada)
-              _buildRequestCard(),
+              // Card con información del pasajero
+              PassengerInfoCard(request: widget.request, showFullInfo: true),
 
               const SizedBox(height: 20),
 
@@ -467,72 +468,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  /// Construye el card con información del viaje
-  Widget _buildRequestCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFe1e8ed)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Detalles del viaje
-          Column(
-            children: [
-              _buildLocationRow(Colors.black, _pickupAddress),
-              const SizedBox(height: 8),
-              _buildLocationRow(Colors.red, _destinationAddress),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Info del viaje
-          Container(
-            padding: const EdgeInsets.only(top: 12),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFFecf0f1))),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Precio solicitado:',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF7f8c8d)),
-                ),
-                Text(
-                  'S/${_suggestedPrice.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF27ae60),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Construye una fila de ubicación
-  Widget _buildLocationRow(Color color, String address) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Text(address, style: const TextStyle(fontSize: 14))),
-      ],
     );
   }
 
