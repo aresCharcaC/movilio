@@ -29,4 +29,13 @@ abstract class RideRepository {
   // Retorna: Future<void> - No retorna datos, solo confirma la eliminación
   // Nota: Este método se usa cuando el usuario sale de la pantalla de búsqueda
   Future<void> cancelAndDeleteActiveSearch();
+
+  // Método para que un conductor envíe una oferta para un viaje específico
+  // Recibe: String rideId - ID del viaje, double tarifaPropuesta - precio ofrecido, String? mensaje - mensaje opcional
+  // Retorna: Future<Map<String, dynamic>> con la respuesta del servidor
+  Future<Map<String, dynamic>> makeDriverOffer({
+    required String rideId,
+    required double tarifaPropuesta,
+    String? mensaje,
+  });
 }

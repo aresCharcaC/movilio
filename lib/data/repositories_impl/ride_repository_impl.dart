@@ -137,4 +137,36 @@ class RideRepositoryImpl implements RideRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<Map<String, dynamic>> makeDriverOffer({
+    required String rideId,
+    required double tarifaPropuesta,
+    String? mensaje,
+  }) async {
+    try {
+      developer.log(
+        '💰 Enviando oferta del conductor en el repositorio...',
+        name: 'RideRepositoryImpl',
+      );
+
+      final result = await _remoteDataSource.makeDriverOffer(
+        rideId: rideId,
+        tarifaPropuesta: tarifaPropuesta,
+        mensaje: mensaje,
+      );
+
+      developer.log(
+        '✅ Oferta enviada exitosamente en el repositorio',
+        name: 'RideRepositoryImpl',
+      );
+      return result;
+    } on ApiException catch (e) {
+      developer.log(
+        '❌ Error al enviar oferta: ${e.message}',
+        name: 'RideRepositoryImpl',
+      );
+      rethrow;
+    }
+  }
 }

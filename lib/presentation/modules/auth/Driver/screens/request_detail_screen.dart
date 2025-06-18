@@ -1,620 +1,200 @@
-// lib/presentation/modules/auth/Driver/screens/request_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:joya_express/data/models/user/ride_request_model.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:joya_express/core/constants/app_colors.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
-import '../viewmodels/driver_home_viewmodel.dart';
+import 'package:joya_express/data/models/ride_request_model.dart';
+import 'package:joya_express/domain/repositories/ride_repository.dart';
+import 'package:get_it/get_it.dart';
 
-class RequestDetailScreen extends StatelessWidget {
-  final dynamic solicitud;
+/// Pantalla de detalles de solicitud de viaje para conductores
+/// Muestra el mapa con rutas, información del viaje y opciones para enviar ofertas
+class RequestDetailScreen extends StatefulWidget {
+  final dynamic request;
 
-  const RequestDetailScreen({super.key, required this.solicitud});
+  const RequestDetailScreen({super.key, required this.request});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(
-          'Detalle de Solicitud',
-          style: AppTextStyles.poppinsHeading2,
-        ),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          // Mapa con los 3 puntos
-          Expanded(flex: 3, child: _buildMap(context)),
+  State<RequestDetailScreen> createState() => _RequestDetailScreenState();
+}
 
-          // Información del pasajero y botones
-          Expanded(flex: 2, child: _buildInfoSection(context)),
-        ],
-      ),
-    );
+class _RequestDetailScreenState extends State<RequestDetailScreen> {
+  final TextEditingController _priceController = TextEditingController();
+  final MapController _mapController = MapController();
+
+  Position? _currentPosition;
+  bool _isLoadingLocation = true;
+  bool _isSendingOffer = false;
+  double _currentOfferPrice = 0.0;
+
+  // Datos del viaje
+  late String _rideId;
+  late double _pickupLat;
+  late double _pickupLng;
+  late double _destinationLat;
+  late double _destinationLng;
+  late String _pickupAddress;
+  late String _destinationAddress;
+  late double _suggestedPrice;
+
+  @override
+  void initState() {
+    super.initState();
+    _extractRequestData();
+    _getCurrentLocation();
+    _initializePriceController();
   }
 
-  Widget _buildMap(BuildContext context) {
-    final conductorPosition =
-        context.read<DriverHomeViewModel>().currentPosition;
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: LatLng(
-              (solicitud['origenLat'] ?? solicitud['origen_lat'] ?? 0.0)
-                  .toDouble(),
-              (solicitud['origenLng'] ?? solicitud['origen_lng'] ?? 0.0)
-                  .toDouble(),
-            ),
-            initialZoom: 14.0,
-            minZoom: 10.0,
-            maxZoom: 18.0,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.joyaexpress.app',
-              maxZoom: 18,
-            ),
-            MarkerLayer(markers: _buildMarkers(conductorPosition)),
-          ],
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    _priceController.dispose();
+    super.dispose();
   }
 
-  List<Marker> _buildMarkers(dynamic conductorPosition) {
-    final List<Marker> markers = [];
+  /// Extrae los datos del request
+  void _extractRequestData() {
+    if (widget.request is RideRequestModel) {
+      final request = widget.request as RideRequestModel;
+      _rideId = request.id ?? '';
+      _pickupLat = request.origenLat;
+      _pickupLng = request.origenLng;
+      _destinationLat = request.destinoLat;
+      _destinationLng = request.destinoLng;
+      _pickupAddress = request.origenDireccion ?? 'Dirección de recogida';
+      _destinationAddress = request.destinoDireccion ?? 'Dirección de destino';
+      _suggestedPrice = request.precioSugerido ?? 0.0;
+    } else {
+      // Manejo para datos dinámicos
+      _rideId = _getProperty(['id', 'viaje_id']) ?? '';
+      _pickupLat = _getDoubleProperty(['origenLat', 'origen_lat']) ?? 0.0;
+      _pickupLng = _getDoubleProperty(['origenLng', 'origen_lng']) ?? 0.0;
+      _destinationLat =
+          _getDoubleProperty(['destinoLat', 'destino_lat']) ?? 0.0;
+      _destinationLng =
+          _getDoubleProperty(['destinoLng', 'destino_lng']) ?? 0.0;
+      _pickupAddress =
+          _getProperty(['origenDireccion', 'origen_direccion']) ??
+          'Dirección de recogida';
+      _destinationAddress =
+          _getProperty(['destinoDireccion', 'destino_direccion']) ??
+          'Dirección de destino';
+      _suggestedPrice =
+          _getDoubleProperty(['precioSugerido', 'precio_sugerido']) ?? 0.0;
+    }
+  }
 
-    // 📍 Marcador del conductor (azul)
-    if (conductorPosition != null) {
-      markers.add(
-        Marker(
-          point: LatLng(
-            conductorPosition.latitude,
-            conductorPosition.longitude,
-          ),
-          width: 40,
-          height: 40,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.blue[600],
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.directions_car,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-        ),
+  /// Inicializa el controlador de precio con el precio sugerido
+  void _initializePriceController() {
+    _currentOfferPrice = _suggestedPrice;
+    _priceController.text = _suggestedPrice.toStringAsFixed(2);
+  }
+
+  /// Obtiene la ubicación actual del conductor
+  Future<void> _getCurrentLocation() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
       );
-    }
-
-    // 🟢 Marcador del punto de recogida (verde)
-    markers.add(
-      Marker(
-        point: LatLng(
-          (solicitud['origenLat'] ?? solicitud['origen_lat'] ?? 0.0).toDouble(),
-          (solicitud['origenLng'] ?? solicitud['origen_lng'] ?? 0.0).toDouble(),
-        ),
-        width: 40,
-        height: 40,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.green[600],
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Icon(Icons.person, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-
-    // 🔴 Marcador del punto de destino (rojo)
-    markers.add(
-      Marker(
-        point: LatLng(
-          (solicitud['destinoLat'] ?? solicitud['destino_lat'] ?? 0.0)
-              .toDouble(),
-          (solicitud['destinoLng'] ?? solicitud['destino_lng'] ?? 0.0)
-              .toDouble(),
-        ),
-        width: 40,
-        height: 40,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.red[600],
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-
-    return markers;
-  }
-
-  Widget _buildInfoSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Información del pasajero
-          _buildPassengerInfo(),
-
-          const SizedBox(height: 16),
-
-          // Direcciones
-          _buildAddressInfo(),
-
-          const SizedBox(height: 16),
-
-          // Precio y métodos de pago
-          _buildPriceInfo(),
-
-          const Spacer(),
-
-          // Botón de aceptar
-          _buildAcceptButton(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPassengerInfo() {
-    return Row(
-      children: [
-        // Foto del pasajero
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primary, width: 2),
-          ),
-          child: ClipOval(
-            child:
-                (solicitud['foto'] ?? solicitud['usuario_foto'] ?? '')
-                        .isNotEmpty
-                    ? Image.network(
-                      solicitud['foto'] ?? solicitud['usuario_foto'] ?? '',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildAvatarFallback(),
-                    )
-                    : _buildAvatarFallback(),
-          ),
-        ),
-
-        const SizedBox(width: 16),
-
-        // Nombre y rating
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                solicitud['nombre'] ?? solicitud['usuario_nombre'] ?? 'Usuario',
-                style: AppTextStyles.poppinsHeading3.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.star, color: Colors.amber, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${((solicitud['rating'] ?? solicitud['usuario_rating'] ?? 4.5).toDouble()).toStringAsFixed(1)} (${solicitud['votos'] ?? solicitud['usuario_votos'] ?? 0} votos)',
-                    style: AppTextStyles.poppinsHeading2.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAvatarFallback() {
-    return Container(
-      color: AppColors.primaryLight,
-      child: Center(
-        child: Text(
-          (solicitud['nombre'] ?? solicitud['usuario_nombre'] ?? '').isNotEmpty
-              ? (solicitud['nombre'] ?? solicitud['usuario_nombre'] ?? '')[0]
-                  .toUpperCase()
-              : '?',
-          style: AppTextStyles.poppinsHeading2.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddressInfo() {
-    return Column(
-      children: [
-        // Origen
-        Row(
-          children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: Colors.green[600],
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Recogida',
-                    style: AppTextStyles.poppinsHeading2.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    _getProperty(solicitud, [
-                          'direccion',
-                          'origenDireccion',
-                          'origen_direccion',
-                        ]) ??
-                        'Dirección no especificada',
-                    style: AppTextStyles.poppinsHeading1.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 12),
-
-        // Línea conectora
-        Container(
-          margin: const EdgeInsets.only(left: 6),
-          width: 1,
-          height: 20,
-          color: AppColors.greyLight,
-        ),
-
-        const SizedBox(height: 12),
-
-        // Destino
-        Row(
-          children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: Colors.red[600],
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Destino',
-                    style: AppTextStyles.poppinsHeading2.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    _getProperty(solicitud, [
-                          'destinoDireccion',
-                          'destino_direccion',
-                        ]) ??
-                        'Destino no especificado',
-                    style: AppTextStyles.poppinsHeading1.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPriceInfo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.greyLight),
-      ),
-      child: Row(
-        children: [
-          // Precio
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Precio Ofrecido',
-                  style: AppTextStyles.poppinsHeading2.copyWith(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'S/ ${(_getDoubleProperty(solicitud, ['precio', 'tarifaMaxima', 'tarifa_maxima', 'precioSugerido', 'precio_sugerido']) ?? 0.0).toStringAsFixed(2)}',
-                  style: AppTextStyles.poppinsHeading2.copyWith(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Métodos de pago
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'Métodos de Pago',
-                  style: AppTextStyles.poppinsHeading2.copyWith(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children:
-                      (_getListProperty(solicitud, [
-                                'metodos',
-                                'metodosPago',
-                                'metodos_pago',
-                              ]) ??
-                              <String>[])
-                          .map((metodo) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getPaymentMethodColor(metodo),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                metodo,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            );
-                          })
-                          .toList(),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAcceptButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 50,
-      child: ElevatedButton(
-        onPressed: () => _handleAccept(context),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green[600],
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 2,
-        ),
-        child: Text(
-          'Aceptar por S/ ${(_getDoubleProperty(solicitud, ['precio', 'tarifaMaxima', 'tarifa_maxima', 'precioSugerido', 'precio_sugerido']) ?? 0.0).toStringAsFixed(2)}',
-          style: AppTextStyles.poppinsHeading1.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            fontSize: 16,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _getPaymentMethodColor(String metodo) {
-    switch (metodo.toLowerCase()) {
-      case 'yape':
-        return const Color(0xFF722F87); // Morado Yape
-      case 'plin':
-        return const Color(0xFF00BCD4); // Celeste Plin
-      case 'efectivo':
-        return const Color(0xFF4CAF50); // Verde Efectivo
-      default:
-        return AppColors.greyLight;
+      setState(() {
+        _currentPosition = position;
+        _isLoadingLocation = false;
+      });
+      _centerMapOnRoute();
+    } catch (e) {
+      setState(() {
+        _isLoadingLocation = false;
+      });
     }
   }
 
-  void _handleAccept(BuildContext context) {
-    final nombre =
-        _getProperty(solicitud, [
-          'nombre',
-          'usuarioNombre',
-          'usuario_nombre',
-        ]) ??
-        'Usuario';
-    final rideId = _getProperty(solicitud, ['rideId', 'id', 'ride_id']) ?? '';
+  /// Centra el mapa para mostrar toda la ruta
+  void _centerMapOnRoute() {
+    if (_currentPosition == null) return;
 
-    // Mostrar confirmación
+    // Simplemente centrar en la ubicación actual por ahora
+    // TODO: Implementar bounds cuando sea necesario
+  }
+
+  /// Ajusta el precio de la oferta
+  void _adjustPrice(double amount) {
+    final newPrice = (_currentOfferPrice + amount).clamp(0.0, 999.99);
+    setState(() {
+      _currentOfferPrice = newPrice;
+      _priceController.text = newPrice.toStringAsFixed(2);
+    });
+  }
+
+  /// Actualiza el precio cuando se edita manualmente
+  void _onPriceChanged(String value) {
+    final newPrice = double.tryParse(value) ?? _suggestedPrice;
+    setState(() {
+      _currentOfferPrice = newPrice;
+    });
+  }
+
+  /// Envía la oferta al backend
+  Future<void> _sendOffer() async {
+    if (_rideId.isEmpty) {
+      _showMessage('Error: ID de viaje no válido', isError: true);
+      return;
+    }
+
+    setState(() {
+      _isSendingOffer = true;
+    });
+
+    try {
+      final repository = GetIt.instance<RideRepository>();
+      await repository.makeDriverOffer(
+        rideId: _rideId,
+        tarifaPropuesta: _currentOfferPrice,
+        mensaje: 'Oferta del conductor',
+      );
+
+      _showMessage('¡Oferta enviada exitosamente!');
+      Navigator.of(context).pop();
+    } catch (e) {
+      _showMessage('Error al enviar oferta: $e', isError: true);
+    } finally {
+      setState(() {
+        _isSendingOffer = false;
+      });
+    }
+  }
+
+  /// Muestra un mensaje al usuario
+  void _showMessage(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Solicitud de $nombre aceptada'),
-        backgroundColor: Colors.green[600],
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
-
-    // Eliminar solicitud de la lista
-    if (rideId.isNotEmpty) {
-      context.read<DriverHomeViewModel>().rejectRequest(rideId);
-    }
-
-    // Regresar a la pantalla principal
-    Navigator.pop(context);
   }
 
-  /// Método auxiliar para obtener propiedades de forma segura
-  static dynamic _getProperty(dynamic obj, List<String> keys) {
-    if (obj == null) return null;
-
+  /// Obtiene propiedades de forma segura
+  dynamic _getProperty(List<String> keys) {
+    if (widget.request == null) return null;
     for (String key in keys) {
       try {
-        if (obj is Map<String, dynamic> && obj.containsKey(key)) {
-          return obj[key];
-        } else if (obj.runtimeType.toString().contains('RideRequestModel')) {
-          // Si es un objeto modelo, intentar acceder por reflexión o propiedades conocidas
-          switch (key) {
-            case 'foto':
-            case 'usuarioFoto':
-              return obj.usuarioFoto;
-            case 'nombre':
-            case 'usuarioNombre':
-              return obj.usuarioNombre;
-            case 'direccion':
-            case 'origenDireccion':
-              return obj.origenDireccion;
-            case 'metodos':
-            case 'metodosPago':
-              return obj.metodosPago;
-            case 'rating':
-            case 'usuarioRating':
-              return obj.usuarioRating;
-            case 'votos':
-            case 'usuarioVotos':
-              return obj.usuarioVotos;
-            case 'precio':
-            case 'tarifaMaxima':
-              return obj.tarifaMaxima;
-            case 'destinoDireccion':
-              return obj.destinoDireccion;
-            case 'rideId':
-            case 'id':
-              return obj.id;
+        if (widget.request is Map<String, dynamic> &&
+            widget.request.containsKey(key)) {
+          final value = widget.request[key];
+          if (value != null && value.toString().trim().isNotEmpty) {
+            return value;
           }
         }
       } catch (e) {
-        // Continuar con la siguiente clave si hay error
         continue;
       }
     }
     return null;
   }
 
-  /// Método auxiliar para obtener listas de forma segura
-  static List<String>? _getListProperty(dynamic obj, List<String> keys) {
-    final value = _getProperty(obj, keys);
-    if (value == null) return null;
-    if (value is List<String>) return value;
-    if (value is List) return value.map((e) => e.toString()).toList();
-    return null;
-  }
-
-  /// Método auxiliar para obtener doubles de forma segura
-  static double? _getDoubleProperty(dynamic obj, List<String> keys) {
-    final value = _getProperty(obj, keys);
+  /// Obtiene doubles de forma segura
+  double? _getDoubleProperty(List<String> keys) {
+    final value = _getProperty(keys);
     if (value == null) return null;
     if (value is double) return value;
     if (value is int) return value.toDouble();
@@ -626,5 +206,421 @@ class RequestDetailScreen extends StatelessWidget {
       }
     }
     return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Mapa de fondo
+          _buildMap(),
+
+          // Header transparente
+          _buildHeader(),
+
+          // Leyenda del mapa
+          _buildMapLegend(),
+
+          // Bottom sheet con información y controles
+          _buildBottomSheet(),
+        ],
+      ),
+    );
+  }
+
+  /// Construye el mapa con rutas y puntos
+  Widget _buildMap() {
+    return Positioned.fill(
+      child:
+          _isLoadingLocation
+              ? Container(
+                color: Colors.grey[200],
+                child: const Center(child: CircularProgressIndicator()),
+              )
+              : Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFe8f5e8), Color(0xFFf0f8f0)],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 90, 20, 300),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      border: Border.all(color: Colors.grey[300]!, width: 2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'MAPA\n(OpenStreetMap)',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+    );
+  }
+
+  /// Construye el header transparente
+  Widget _buildHeader() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.grey[100],
+                    shape: const CircleBorder(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Solicitud de Viaje',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2c3e50),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Construye la leyenda del mapa
+  Widget _buildMapLegend() {
+    return Positioned(
+      top: 100,
+      right: 16,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildLegendItem(Colors.blue, 'Tu ubicación'),
+            const SizedBox(height: 4),
+            _buildLegendItem(Colors.black, 'Punto recogida'),
+            const SizedBox(height: 4),
+            _buildLegendItem(Colors.red, 'Punto destino'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Construye un item de la leyenda
+  Widget _buildLegendItem(Color color, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 11, color: Color(0xFF495057)),
+        ),
+      ],
+    );
+  }
+
+  /// Construye el bottom sheet con información y controles
+  Widget _buildBottomSheet() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 12,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Card con información del viaje (reutilizada)
+              _buildRequestCard(),
+
+              const SizedBox(height: 20),
+
+              // Botón Aceptar por precio sugerido
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSendingOffer ? null : _sendOffer,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF27ae60),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  child:
+                      _isSendingOffer
+                          ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                          : Text(
+                            'Aceptar por S/${_currentOfferPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Sección de contraoferta
+              _buildCounterOfferSection(),
+
+              const SizedBox(height: 16),
+
+              // Botón Cerrar
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[600],
+                    side: BorderSide(color: Colors.grey[300]!),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cerrar',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Construye el card con información del viaje
+  Widget _buildRequestCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFe1e8ed)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Detalles del viaje
+          Column(
+            children: [
+              _buildLocationRow(Colors.black, _pickupAddress),
+              const SizedBox(height: 8),
+              _buildLocationRow(Colors.red, _destinationAddress),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Info del viaje
+          Container(
+            padding: const EdgeInsets.only(top: 12),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0xFFecf0f1))),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Precio solicitado:',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF7f8c8d)),
+                ),
+                Text(
+                  'S/${_suggestedPrice.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF27ae60),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construye una fila de ubicación
+  Widget _buildLocationRow(Color color, String address) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(address, style: const TextStyle(fontSize: 14))),
+      ],
+    );
+  }
+
+  /// Construye la sección de contraoferta
+  Widget _buildCounterOfferSection() {
+    return Column(
+      children: [
+        const Text(
+          'Ofrecer tarifa',
+          style: TextStyle(fontSize: 12, color: Color(0xFF7f8c8d)),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Botón -0.50
+            _buildPriceButton('-0.50', () => _adjustPrice(-0.5)),
+            const SizedBox(width: 10),
+
+            // Campo de precio
+            SizedBox(
+              width: 80,
+              child: TextField(
+                controller: _priceController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Color(0xFF2c3e50),
+                ),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFecf0f1),
+                      width: 2,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF3498db),
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 8,
+                  ),
+                ),
+                onChanged: _onPriceChanged,
+              ),
+            ),
+
+            const SizedBox(width: 10),
+            // Botón +0.50
+            _buildPriceButton('+0.50', () => _adjustPrice(0.5)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Construye un botón de ajuste de precio
+  Widget _buildPriceButton(String text, VoidCallback onPressed) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 45,
+        height: 35,
+        decoration: BoxDecoration(
+          color: const Color(0xFFecf0f1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2c3e50),
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

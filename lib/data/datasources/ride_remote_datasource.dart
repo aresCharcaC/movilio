@@ -173,6 +173,49 @@ class RideRemoteDataSource {
     }
   }
 
+  /// Envía una oferta del conductor para un viaje específico
+  Future<Map<String, dynamic>> makeDriverOffer({
+    required String rideId,
+    required double tarifaPropuesta,
+    String? mensaje,
+  }) async {
+    try {
+      developer.log(
+        '💰 Enviando oferta del conductor para viaje $rideId...',
+        name: 'RideRemoteDataSource',
+      );
+
+      final response = await _apiClient.post(ApiEndpoints.makeDriverOffer, {
+        'ride_id': rideId,
+        'tarifa_propuesta': tarifaPropuesta,
+        if (mensaje != null) 'mensaje': mensaje,
+      });
+
+      developer.log(
+        '✅ Oferta enviada exitosamente',
+        name: 'RideRemoteDataSource',
+      );
+      return response;
+    } on AuthException catch (e) {
+      developer.log(
+        '🔑 Error de autenticación: ${e.message}',
+        name: 'RideRemoteDataSource',
+      );
+      await _refreshToken();
+      return makeDriverOffer(
+        rideId: rideId,
+        tarifaPropuesta: tarifaPropuesta,
+        mensaje: mensaje,
+      );
+    } catch (e) {
+      developer.log(
+        '❌ Error al enviar oferta: $e',
+        name: 'RideRemoteDataSource',
+      );
+      rethrow;
+    }
+  }
+
   /// Refresca el token de autenticación
   Future<void> _refreshToken() async {
     try {
