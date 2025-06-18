@@ -186,7 +186,7 @@ class RideRemoteDataSource {
       );
 
       final response = await _apiClient.post(ApiEndpoints.makeDriverOffer, {
-        'ride_id': rideId,
+        'viaje_id': rideId,
         'tarifa_propuesta': tarifaPropuesta,
         if (mensaje != null) 'mensaje': mensaje,
       });
@@ -223,7 +223,7 @@ class RideRemoteDataSource {
         '🔄 Intentando refrescar token...',
         name: 'RideRemoteDataSource',
       );
-      await _apiClient.post(ApiEndpoints.refresh, {});
+      await _apiClient.post(ApiEndpoints.driverRefresh, {});
       developer.log(
         '✅ Token refrescado exitosamente',
         name: 'RideRemoteDataSource',

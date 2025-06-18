@@ -140,4 +140,70 @@ class RidesService {
       ),
     );
   }
+
+  /// ✅ Aceptar oferta de conductor (para usuarios)
+  Future<bool> acceptOffer(String rideId, String offerId) async {
+    try {
+      print('✅ Aceptando oferta: $offerId para viaje: $rideId');
+
+      final response = await _apiClient.post(
+        '/api/rides/passenger/accept-offer',
+        {'ride_id': rideId, 'offer_id': offerId},
+      );
+
+      if (response['success'] == true) {
+        print('✅ Oferta aceptada exitosamente');
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ Error aceptando oferta: $e');
+      throw Exception('Error al aceptar oferta: $e');
+    }
+  }
+
+  /// ❌ Rechazar oferta de conductor (para usuarios)
+  Future<bool> rejectOffer(String rideId, String offerId) async {
+    try {
+      print('❌ Rechazando oferta: $offerId para viaje: $rideId');
+
+      final response = await _apiClient.post(
+        '/api/rides/passenger/reject-offer',
+        {'ride_id': rideId, 'offer_id': offerId},
+      );
+
+      if (response['success'] == true) {
+        print('✅ Oferta rechazada exitosamente');
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ Error rechazando oferta: $e');
+      throw Exception('Error al rechazar oferta: $e');
+    }
+  }
+
+  /// 📋 Obtener ofertas para un viaje específico
+  Future<List<Map<String, dynamic>>> getOffersForRide(String rideId) async {
+    try {
+      print('📋 Obteniendo ofertas para viaje: $rideId');
+
+      final response = await _apiClient.get(
+        '/api/rides/passenger/offers/$rideId',
+      );
+
+      if (response['success'] == true) {
+        final offers = response['data']['offers'] as List;
+        print('✅ ${offers.length} ofertas obtenidas');
+        return offers.cast<Map<String, dynamic>>();
+      }
+
+      return [];
+    } catch (e) {
+      print('❌ Error obteniendo ofertas: $e');
+      return [];
+    }
+  }
 }

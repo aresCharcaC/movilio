@@ -5,6 +5,10 @@ import 'package:provider/provider.dart';
 import 'package:joya_express/core/constants/app_colors.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
 import 'package:joya_express/presentation/providers/ride_provider.dart';
+import 'package:joya_express/presentation/providers/driver_offers_provider.dart';
+import 'package:joya_express/presentation/modules/home/widgets/driver_offers_overlay.dart';
+import 'package:joya_express/core/di/service_locator.dart';
+import 'package:joya_express/data/services/passenger_websocket_service.dart';
 
 /// Pantalla de búsqueda de conductor con efecto radar
 /// Muestra una animación tipo radar sin usar Google Maps
@@ -51,11 +55,20 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
   bool _isSearching = true;
   String _searchMessage = 'Buscando conductor...';
 
+  // Provider de ofertas
+  late DriverOffersProvider _offersProvider;
+  String? _currentRideId;
+
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
+    _initializeOffersProvider();
     _startSearch();
+  }
+
+  void _initializeOffersProvider() {
+    _offersProvider = sl<DriverOffersProvider>();
   }
 
   void _initializeAnimations() {
@@ -127,12 +140,50 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
       print('🎯 Destino: ${widget.destinationLat}, ${widget.destinationLng}');
       print('💰 Precio estimado: ${widget.estimatedPrice}');
 
-      // La solicitud ya fue creada en el LocationInputPanel
-      // Aquí solo iniciamos la búsqueda activa
+      // ✅ PASO 1: Asegurar que el WebSocket del pasajero esté conectado
+      final webSocketService = sl<PassengerWebSocketService>();
+
+      if (!webSocketService.isConnected) {
+        print('🔌 WebSocket no conectado, intentando conectar...');
+
+        // ✅ USAR VALORES HARDCODEADOS TEMPORALMENTE PARA TESTING
+        final connected = await webSocketService.connectPassenger(
+          'test_user_123', // ID de usuario temporal
+          'test_token_abc', // Token temporal
+        );
+
+        if (!connected) {
+          throw Exception('No se pudo conectar al WebSocket');
+        }
+
+        print('✅ WebSocket conectado exitosamente');
+      } else {
+        print('✅ WebSocket ya está conectado');
+      }
+
+      // ✅ PASO 2: Obtener el ID del viaje actual del RideProvider
+      final rideProvider = Provider.of<RideProvider>(context, listen: false);
+      if (rideProvider.currentRide != null) {
+        _currentRideId = rideProvider.currentRide!.id;
+
+        // ✅ PASO 3: Iniciar escucha de ofertas
+        await _offersProvider.startListeningForOffers(_currentRideId!);
+        print('✅ Escucha de ofertas iniciada para viaje: $_currentRideId');
+
+        // ✅ PASO 4: Verificar estadísticas de conexión
+        final stats = webSocketService.getConnectionStats();
+        print('📊 Estadísticas WebSocket: $stats');
+
+        // ✅ PASO 5: Debug - Listar eventos registrados
+        webSocketService.debugEventCallbacks();
+      } else {
+        throw Exception('No se encontró el viaje actual');
+      }
+
       print('✅ Solicitud creada, iniciando búsqueda...');
     } catch (e) {
       print('❌ Error en búsqueda: $e');
-      _showErrorAndClose('Error al iniciar la búsqueda de conductor');
+      _showErrorAndClose('Error al iniciar la búsqueda de conductor: $e');
     }
   }
 
@@ -195,8 +246,54 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
   void _confirmCancel() {
     _searchTimer?.cancel();
     _isSearching = false;
+    _offersProvider.stopListening();
     _cancelRideRequest();
     Navigator.of(context).pop();
+  }
+
+  void _onOfferAccepted() {
+    // Cuando se acepta una oferta, detener búsqueda y navegar
+    _searchTimer?.cancel();
+    _isSearching = false;
+    _offersProvider.stopListening();
+
+    // Aquí podrías navegar a la pantalla de viaje en progreso
+    Navigator.of(context).pop(); // Por ahora solo cerrar
+
+    // Mostrar mensaje de éxito
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('¡Oferta aceptada! El conductor se dirigirá hacia ti.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _onAllOffersRejected() {
+    // Cuando se rechazan todas las ofertas, continuar búsqueda
+    // O mostrar opción de cancelar completamente
+    _showDialog(
+      title: 'Ofertas rechazadas',
+      content:
+          '¿Deseas continuar buscando más conductores o cancelar la búsqueda?',
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            // Continuar búsqueda
+          },
+          child: const Text('Continuar buscando'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            _confirmCancel();
+          },
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Cancelar búsqueda'),
+        ),
+      ],
+    );
   }
 
   void _showTimeoutDialog() {
@@ -254,236 +351,264 @@ class _DriverSearchScreenState extends State<DriverSearchScreen>
     return WillPopScope(
       onWillPop: () async {
         // Cuando el usuario intenta salir, cancelar automáticamente la solicitud
+        _offersProvider.stopListening();
         await _cancelRideRequest();
         return true; // Permitir salir después de cancelar
       },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF1A1A2E),
-        body: Stack(
-          children: [
-            // Fondo con gradiente
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF1A1A2E),
-                    Color(0xFF16213E),
-                    Color(0xFF0F3460),
-                  ],
-                ),
-              ),
-            ),
-
-            // Efecto radar en el centro
-            Center(
-              child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _radarAnimation,
-                  _pulseAnimation,
-                  _rippleAnimation,
-                ]),
-                builder: (context, child) {
-                  return CustomPaint(
-                    size: const Size(300, 300),
-                    painter: RadarPainter(
-                      radarAngle: _radarAnimation.value,
-                      pulseRadius: _pulseAnimation.value,
-                      rippleRadius: _rippleAnimation.value,
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // Panel superior con información
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Indicador de búsqueda
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.primary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _searchMessage,
-                              style: AppTextStyles.poppinsHeading3.copyWith(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _formatTime(_remainingSeconds),
-                              style: AppTextStyles.interBody.copyWith(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Información del viaje
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        widget.pickupAddress,
-                                        style: AppTextStyles.interCaption
-                                            .copyWith(
-                                              color: AppColors.textSecondary,
-                                            ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        widget.destinationAddress,
-                                        style: AppTextStyles.interCaption
-                                            .copyWith(
-                                              color: AppColors.textSecondary,
-                                            ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Text(
-                            'S/ ${widget.estimatedPrice.toStringAsFixed(2)}',
-                            style: AppTextStyles.poppinsHeading3.copyWith(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+      child: MultiProvider(
+        providers: [ChangeNotifierProvider.value(value: _offersProvider)],
+        child: Scaffold(
+          backgroundColor: const Color(0xFF1A1A2E),
+          body: Stack(
+            children: [
+              // Fondo con gradiente
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF1A1A2E),
+                      Color(0xFF16213E),
+                      Color(0xFF0F3460),
                     ],
                   ),
                 ),
               ),
-            ),
 
-            // Botón de cancelar
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  child: ElevatedButton(
-                    onPressed: _isSearching ? _cancelSearch : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              // Efecto radar en el centro
+              Center(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([
+                    _radarAnimation,
+                    _pulseAnimation,
+                    _rippleAnimation,
+                  ]),
+                  builder: (context, child) {
+                    return CustomPaint(
+                      size: const Size(300, 300),
+                      painter: RadarPainter(
+                        radarAngle: _radarAnimation.value,
+                        pulseRadius: _pulseAnimation.value,
+                        rippleRadius: _rippleAnimation.value,
                       ),
-                      elevation: 4,
+                    );
+                  },
+                ),
+              ),
+
+              // Panel superior con información
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
                       children: [
-                        const Icon(Icons.close, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Cancelar búsqueda',
-                          style: AppTextStyles.interBody.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        // Indicador de búsqueda
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _searchMessage,
+                                style: AppTextStyles.poppinsHeading3.copyWith(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _formatTime(_remainingSeconds),
+                                style: AppTextStyles.interBody.copyWith(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Información del viaje
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.green,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          widget.pickupAddress,
+                                          style: AppTextStyles.interCaption
+                                              .copyWith(
+                                                color: AppColors.textSecondary,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          widget.destinationAddress,
+                                          style: AppTextStyles.interCaption
+                                              .copyWith(
+                                                color: AppColors.textSecondary,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              'S/ ${widget.estimatedPrice.toStringAsFixed(2)}',
+                              style: AppTextStyles.poppinsHeading3.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+
+              // Botón de cancelar
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    child: ElevatedButton(
+                      onPressed: _isSearching ? _cancelSearch : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 4,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.close, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Cancelar búsqueda',
+                            style: AppTextStyles.interBody.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Overlay de ofertas de conductores
+              DriverOffersOverlay(
+                onOfferAccepted: _onOfferAccepted,
+                onAllOffersRejected: _onAllOffersRejected,
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  void _showDialog({
+    required String title,
+    required String content,
+    required List<Widget> actions,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: actions,
+          ),
     );
   }
 
   @override
   void dispose() {
     _searchTimer?.cancel();
+    _offersProvider.stopListening();
     _radarController.dispose();
     _pulseController.dispose();
     _rippleController.dispose();

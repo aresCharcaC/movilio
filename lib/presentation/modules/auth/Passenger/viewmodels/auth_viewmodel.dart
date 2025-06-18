@@ -1,17 +1,21 @@
 import 'package:flutter/foundation.dart';
 import 'package:joya_express/data/services/auth_persistence_service.dart';
+import 'package:joya_express/data/services/passenger_websocket_service.dart';
+import 'package:joya_express/core/di/service_locator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../../domain/entities/user_entity.dart';
 import '../../../../../domain/repositories/auth_repository.dart';
 import '../../../../../data/models/auth_response_model.dart';
 import '../../../../../shared/utils/phone_formatter.dart';
+
 enum AuthState { initial, loading, success, error }
+
 /// ViewModel para manejar la lógica de autenticación
 class AuthViewModel extends ChangeNotifier {
   final AuthRepository _authRepository;
 
   AuthViewModel({required AuthRepository authRepository})
-      : _authRepository = authRepository;
+    : _authRepository = authRepository;
 
   // Variables para almacenar datos de usuario
   String? _profilePhotoPath;
@@ -41,7 +45,7 @@ class AuthViewModel extends ChangeNotifier {
   static const List<String> _defaultProfilePhotos = [
     'https://images.icon-icons.com/2483/PNG/512/user_icon_149851.png',
   ];
-  
+
   // Inicializar desde estado persistido con validación
   Future<void> initializeFromPersistedState() async {
     try {
@@ -53,12 +57,12 @@ class AuthViewModel extends ChangeNotifier {
       }
 
       final authState = await AuthPersistenceService.getAuthFlowState();
-      
+
       if (authState['phoneNumber'] != null) {
         _currentPhone = authState['phoneNumber'];
         print('AuthFlow - Teléfono recuperado: $_currentPhone');
       }
-      
+
       if (authState['tempToken'] != null) {
         // Recrear VerifyCodeResponse si existe el token
         _verifyCodeResponse = VerifyCodeResponse(
@@ -69,7 +73,7 @@ class AuthViewModel extends ChangeNotifier {
         );
         print('AuthFlow - Token temporal recuperado');
       }
-      
+
       notifyListeners();
     } catch (e) {
       print('AuthFlow - Error al inicializar: $e');
@@ -77,24 +81,25 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-
   // Enviar código de verificación
   Future<bool> sendVerificationCode(String phone) async {
     try {
       _setState(AuthState.loading);
-      
+
       final formattedPhone = PhoneFormatter.formatToInternational(phone);
       _currentPhone = formattedPhone;
-      
+
       _sendCodeResponse = await _authRepository.sendCode(formattedPhone);
-      
+
       // Guardar inmediatamente después del envío exitoso
       await AuthPersistenceService.saveAuthFlowState(
         phoneNumber: formattedPhone,
         currentStep: 'code_sent',
       );
-      
-      print('AuthFlow - Código enviado y estado guardado para: $formattedPhone');
+
+      print(
+        'AuthFlow - Código enviado y estado guardado para: $formattedPhone',
+      );
       _setState(AuthState.success);
       return true;
     } catch (e) {
@@ -105,11 +110,11 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // Verificar código
-   Future<bool> verifyCode(String code) async {
+  Future<bool> verifyCode(String code) async {
     try {
       // Asegurar que tenemos los datos necesarios
       await _ensureAuthData();
-      
+
       if (_currentPhone == null) {
         _setError('No se encontró el número de teléfono. Reinicia el proceso.');
         return false;
@@ -117,16 +122,19 @@ class AuthViewModel extends ChangeNotifier {
 
       _setState(AuthState.loading);
       print('AuthFlow - Verificando código para: $_currentPhone');
-      
-      _verifyCodeResponse = await _authRepository.verifyCode(_currentPhone!, code);
-      
+
+      _verifyCodeResponse = await _authRepository.verifyCode(
+        _currentPhone!,
+        code,
+      );
+
       // Guardar token inmediatamente
       await AuthPersistenceService.saveAuthFlowState(
         phoneNumber: _currentPhone!,
         tempToken: _verifyCodeResponse?.tempToken,
         currentStep: 'code_verified',
       );
-      
+
       print('AuthFlow - Código verificado y token guardado');
       _setState(AuthState.success);
       return true;
@@ -148,18 +156,19 @@ class AuthViewModel extends ChangeNotifier {
   /// Determina si una ruta es local (archivo del dispositivo)
   bool _isLocalPath(String? path) {
     if (path == null) return false;
-    return path.startsWith('/') || 
-           path.startsWith('file://') || 
-           path.contains('cache') ||
-           path.contains('documents') ||
-           path.contains('storage');
+    return path.startsWith('/') ||
+        path.startsWith('file://') ||
+        path.contains('cache') ||
+        path.contains('documents') ||
+        path.contains('storage');
   }
+
   /// Obtiene una URL predefinida aleatoria o basada en el nombre
   String _getDefaultProfilePhotoUrl(String? fullName) {
     if (fullName == null || fullName.isEmpty) {
       return _defaultProfilePhotos.first;
     }
-    
+
     // Usar el hash del nombre para obtener consistencia
     final hash = fullName.hashCode.abs();
     final index = hash % _defaultProfilePhotos.length;
@@ -172,7 +181,6 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-
   // Registrar con manejo completo de imagen y persistencia
   Future<bool> register({
     required String password,
@@ -183,27 +191,31 @@ class AuthViewModel extends ChangeNotifier {
     try {
       // Asegurar datos necesarios
       await _ensureAuthData();
-      
+
       if (_currentPhone == null || _verifyCodeResponse?.tempToken == null) {
         _setError('Faltan datos de verificación. Reinicia el proceso.');
         return false;
       }
 
       _setState(AuthState.loading);
-      
+
       // Manejar imagen de perfil
       String? photoUrlForBackend;
       if (profilePhoto != null && _isLocalPath(profilePhoto)) {
         photoUrlForBackend = _getDefaultProfilePhotoUrl(fullName);
-        print('AuthFlow - Imagen local detectada, usando URL predefinida: $photoUrlForBackend');
+        print(
+          'AuthFlow - Imagen local detectada, usando URL predefinida: $photoUrlForBackend',
+        );
       } else if (profilePhoto != null) {
         photoUrlForBackend = profilePhoto;
       } else {
         photoUrlForBackend = _getDefaultProfilePhotoUrl(fullName);
       }
-      
-      print('AuthFlow - Registrando usuario con phone: $_currentPhone, token: ${_verifyCodeResponse!.tempToken}');
-      
+
+      print(
+        'AuthFlow - Registrando usuario con phone: $_currentPhone, token: ${_verifyCodeResponse!.tempToken}',
+      );
+
       _currentUser = await _authRepository.register(
         phone: _currentPhone!,
         tempToken: _verifyCodeResponse!.tempToken,
@@ -212,10 +224,13 @@ class AuthViewModel extends ChangeNotifier {
         email: email,
         profilePhoto: photoUrlForBackend,
       );
-      
+
+      // ✅ CONECTAR WEBSOCKET AUTOMÁTICAMENTE DESPUÉS DEL REGISTRO
+      await _connectWebSocketAfterAuth();
+
       // Limpiar estado después del registro exitoso
       await AuthPersistenceService.clearAuthFlowState();
-      
+
       print('AuthFlow - Usuario registrado exitosamente');
       _setState(AuthState.success);
       return true;
@@ -230,12 +245,15 @@ class AuthViewModel extends ChangeNotifier {
   Future<bool> login(String phone, String password) async {
     try {
       _setState(AuthState.loading);
-      
+
       final formattedPhone = PhoneFormatter.formatToInternational(phone);
       _currentPhone = formattedPhone;
-      
+
       _currentUser = await _authRepository.login(formattedPhone, password);
-      
+
+      // ✅ CONECTAR WEBSOCKET AUTOMÁTICAMENTE DESPUÉS DEL LOGIN
+      await _connectWebSocketAfterAuth();
+
       _setState(AuthState.success);
       return true;
     } catch (e) {
@@ -248,10 +266,10 @@ class AuthViewModel extends ChangeNotifier {
   Future<bool> forgotPassword(String phone) async {
     try {
       _setState(AuthState.loading);
-      
+
       final formattedPhone = PhoneFormatter.formatToInternational(phone);
       await _authRepository.forgotPassword(formattedPhone);
-      
+
       _setState(AuthState.success);
       return true;
     } catch (e) {
@@ -261,13 +279,17 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // Resetear contraseña
-  Future<bool> resetPassword(String phone, String code, String newPassword) async {
+  Future<bool> resetPassword(
+    String phone,
+    String code,
+    String newPassword,
+  ) async {
     try {
       _setState(AuthState.loading);
-      
+
       final formattedPhone = PhoneFormatter.formatToInternational(phone);
       await _authRepository.resetPassword(formattedPhone, code, newPassword);
-      
+
       _setState(AuthState.success);
       return true;
     } catch (e) {
@@ -281,9 +303,55 @@ class AuthViewModel extends ChangeNotifier {
     try {
       _setState(AuthState.loading);
       _currentUser = await _authRepository.getCurrentUser();
+
+      // ✅ CONECTAR WEBSOCKET SI EL USUARIO YA ESTÁ AUTENTICADO
+      if (_currentUser != null) {
+        await _connectWebSocketAfterAuth();
+      }
+
       _setState(_currentUser != null ? AuthState.success : AuthState.initial);
     } catch (e) {
       _setError(e.toString());
+    }
+  }
+
+  /// ✅ CONECTAR WEBSOCKET AUTOMÁTICAMENTE DESPUÉS DE LA AUTENTICACIÓN
+  Future<void> _connectWebSocketAfterAuth() async {
+    try {
+      if (_currentUser == null) {
+        print('🔌 No se puede conectar WebSocket: usuario no autenticado');
+        return;
+      }
+
+      print('🔌 Conectando WebSocket del pasajero...');
+      print('👤 Usuario ID: ${_currentUser!.id}');
+
+      // Obtener el servicio WebSocket del pasajero
+      final webSocketService = sl<PassengerWebSocketService>();
+
+      // Obtener el token del usuario actual
+      final prefs = sl<SharedPreferences>();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        print('❌ No se encontró token de autenticación');
+        return;
+      }
+
+      // Conectar al WebSocket
+      final connected = await webSocketService.connectPassenger(
+        _currentUser!.id,
+        token,
+      );
+
+      if (connected) {
+        print('✅ WebSocket del pasajero conectado exitosamente');
+        print('🏠 Room del usuario: user_${_currentUser!.id}');
+      } else {
+        print('❌ Error conectando WebSocket del pasajero');
+      }
+    } catch (e) {
+      print('❌ Error en _connectWebSocketAfterAuth: $e');
     }
   }
 
@@ -291,6 +359,10 @@ class AuthViewModel extends ChangeNotifier {
   Future<void> logout() async {
     try {
       _setState(AuthState.loading);
+
+      // ✅ DESCONECTAR WEBSOCKET ANTES DEL LOGOUT
+      await _disconnectWebSocket();
+
       await _authRepository.logout();
       _currentUser = null;
       _currentPhone = null;
@@ -304,10 +376,23 @@ class AuthViewModel extends ChangeNotifier {
       _setError(e.toString());
     }
   }
+
+  /// ✅ DESCONECTAR WEBSOCKET
+  Future<void> _disconnectWebSocket() async {
+    try {
+      print('🔌 Desconectando WebSocket del pasajero...');
+      final webSocketService = sl<PassengerWebSocketService>();
+      webSocketService.disconnect();
+      print('✅ WebSocket del pasajero desconectado');
+    } catch (e) {
+      print('❌ Error desconectando WebSocket: $e');
+    }
+  }
+
   //Guardar imagen de perfil
   // Método duplicado eliminado para evitar conflicto de nombres.
   // Guardar contraseña temporal
-   void saveTempPassword(String password) {
+  void saveTempPassword(String password) {
     _tempPassword = password;
     notifyListeners();
   }
@@ -324,7 +409,8 @@ class AuthViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
-// Establecer error
+
+  // Establecer error
   void _setError(String error) {
     _state = AuthState.error;
     _errorMessage = error;

@@ -17,10 +17,14 @@ import 'package:joya_express/domain/repositories/ride_repository.dart';
 import 'package:joya_express/domain/usecases/create_ride_request_usecase.dart';
 import 'package:joya_express/domain/usecases/cancel_and_delete_active_search_usecase.dart';
 import 'package:joya_express/presentation/providers/ride_provider.dart';
+import 'package:joya_express/presentation/providers/driver_offers_provider.dart';
 import 'package:joya_express/data/repositories/oferta_viaje_repository_impl.dart';
 import 'package:joya_express/domain/repositories/oferta_viaje_repository.dart';
 import 'package:joya_express/domain/usecases/obtener_ofertas_usecase.dart';
 import 'package:joya_express/presentation/modules/home/viewmodels/ofertas_viewmodel.dart';
+import 'package:joya_express/data/services/websocket_service.dart';
+import 'package:joya_express/data/services/passenger_websocket_service.dart';
+import 'package:joya_express/data/services/rides_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /**
@@ -129,6 +133,30 @@ void _setupServices() {
     );
     return service;
   });
+
+  // WebSocketService (para conductores)
+  sl.registerLazySingleton<WebSocketService>(() {
+    print('🔧 Creando WebSocketService...');
+    final service = WebSocketService();
+    print('✅ WebSocketService creado correctamente');
+    return service;
+  });
+
+  // PassengerWebSocketService (para pasajeros)
+  sl.registerLazySingleton<PassengerWebSocketService>(() {
+    print('🔧 Creando PassengerWebSocketService...');
+    final service = PassengerWebSocketService();
+    print('✅ PassengerWebSocketService creado correctamente');
+    return service;
+  });
+
+  // RidesService
+  sl.registerLazySingleton<RidesService>(() {
+    print('🔧 Creando RidesService...');
+    final service = RidesService(apiClient: sl<ApiClient>());
+    print('✅ RidesService creado correctamente');
+    return service;
+  });
 }
 
 void _setupRepositories() {
@@ -181,6 +209,14 @@ void _setupViewModels() {
     () => RideProvider(
       sl<CreateRideRequestUseCase>(),
       sl<CancelAndDeleteActiveSearchUseCase>(),
+    ),
+  );
+
+  // Registrar el provider de ofertas de conductores
+  sl.registerFactory<DriverOffersProvider>(
+    () => DriverOffersProvider(
+      sl<PassengerWebSocketService>(),
+      sl<RidesService>(),
     ),
   );
 

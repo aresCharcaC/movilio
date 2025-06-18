@@ -51,7 +51,7 @@ class DriverRemoteDataSource {
   /// Refrescar token automáticamente
   Future<void> refreshToken() async {
     try {
-      await _apiClient.post(ApiEndpoints.refresh, {});
+      await _apiClient.post(ApiEndpoints.driverRefresh, {});
     } catch (e) {
       // Si no se puede refrescar, limpiar cookies
       await _apiClient.clearCookies();

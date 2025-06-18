@@ -41,7 +41,7 @@ class ApiEndpoints {
       return baseUrl.replaceFirst('http://', 'ws://');
     }
 
-    return 'wss://31a9-38-255-105-31.ngrok-free.app:443';
+    return 'wss://ca7d-38-255-105-31.ngrok-free.app:443';
   }
 
   // ✅ MANTENER ENDPOINTS ORIGINALES EXISTENTES
@@ -61,6 +61,7 @@ class ApiEndpoints {
   static const String driverLogin = '/api/conductor-auth/login';
   static const String driverProfile = '/api/conductor-auth/profile';
   static const String driverLogout = '/api/conductor-auth/logout';
+  static const String driverRefresh = '/api/conductor-auth/refresh';
   static const String driverVehicles = '/api/conductor-auth/vehicles';
   static const String driverDocuments = '/api/conductor-auth/documents';
   static const String driverLocation = '/api/conductor-auth/location';
@@ -78,7 +79,7 @@ class ApiEndpoints {
   // Endpoints para conductores
   static const String nearbyRequests = '/api/rides/driver/nearby-requests';
   static const String updateDriverLocation = '/api/rides/driver/location';
-  static const String makeDriverOffer = '/api/rides/driver/offer';
+  static const String makeDriverOffer = '/api/rides/driver/offers';
   static const String acceptRide = '/api/rides/driver/accept';
   static const String startRide = '/api/rides/driver/start';
   static const String endRide = '/api/rides/driver/end';
