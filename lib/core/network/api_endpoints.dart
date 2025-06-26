@@ -41,7 +41,7 @@ class ApiEndpoints {
       return baseUrl.replaceFirst('http://', 'ws://');
     }
 
-    return 'wss://31a9-38-255-105-31.ngrok-free.app:443';
+    return 'wss://2c85-38-255-105-31.ngrok-free.app:443';
   }
 
   // ✅ MANTENER ENDPOINTS ORIGINALES EXISTENTES

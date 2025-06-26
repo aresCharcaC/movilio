@@ -154,12 +154,21 @@ class MyApp extends StatelessWidget {
 
     // Lógica para decidir la ruta inicial
     String initialRoute;
+
+    // Primero verificar si el modo conductor está activo
     if (driverAuthViewModel.isAuthenticated) {
       initialRoute = AppRoutes.driverHome;
-    } else if (authViewModel.isAuthenticated) {
+      print('🚀 Iniciando app en modo conductor (driverHome)');
+    }
+    // Luego verificar si hay sesión de usuario activa
+    else if (authViewModel.isAuthenticated) {
       initialRoute = AppRoutes.home;
-    } else {
+      print('🚀 Iniciando app en modo pasajero (home)');
+    }
+    // Si no hay ninguna sesión activa, mostrar pantalla de bienvenida
+    else {
       initialRoute = AppRoutes.welcome;
+      print('🚀 Iniciando app en pantalla de bienvenida');
     }
 
     return MaterialApp(
@@ -179,10 +188,8 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      // initialRoute: initialRoute, // ← Ahora es dinámico
-      //Probar la vista de mapas
-      initialRoute: AppRoutes.welcome,
-
+      initialRoute:
+          initialRoute, // Usar la ruta dinámica basada en el estado de autenticación
       // Definimos las rutas de la aplicación
       routes: AppRoutes.routes,
     );

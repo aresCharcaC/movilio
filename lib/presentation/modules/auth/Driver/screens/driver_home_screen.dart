@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
 import 'package:joya_express/data/models/user/ride_request_model.dart';
+import 'package:joya_express/data/services/driver_session_service.dart';
 import 'package:joya_express/presentation/modules/auth/Driver/viewmodels/driver_home_viewmodel.dart';
 import 'package:joya_express/presentation/modules/auth/Driver/viewmodels/driver_auth_viewmodel.dart';
 import 'package:joya_express/presentation/modules/auth/Driver/widgets/driver_drawer.dart';
@@ -18,8 +20,66 @@ import '../../../../../data/models/ride_request_model.dart';
 /// - Drawer con opciones del conductor
 ///
 /// Refactorizada para eliminar redundancia y mejorar la separación de responsabilidades.
-class DriverHomeScreen extends StatelessWidget {
+/// Incluye verificación de sesión activa y registro periódico de actividad.
+class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
+
+  @override
+  State<DriverHomeScreen> createState() => _DriverHomeScreenState();
+}
+
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  // Temporizador para registrar actividad periódicamente
+  Timer? _activityTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Verificar sesión activa al iniciar
+    _checkSessionActive();
+    // Iniciar temporizador para registrar actividad cada 30 minutos
+    _startActivityTimer();
+  }
+
+  @override
+  void dispose() {
+    // Cancelar temporizador al destruir el widget
+    _activityTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Verifica si la sesión del conductor está activa
+  Future<void> _checkSessionActive() async {
+    try {
+      final isActive = await DriverSessionService.isSessionActive();
+      if (!isActive) {
+        print('⏰ Sesión de conductor expirada por inactividad');
+        // Obtener el ViewModel de autenticación
+        final authVm = Provider.of<DriverAuthViewModel>(context, listen: false);
+        // Cerrar sesión
+        await authVm.logout();
+        // Redirigir al login
+        if (mounted) {
+          _redirectToLogin(context);
+        }
+      } else {
+        // Registrar actividad al iniciar
+        await DriverSessionService.registerActivity();
+        print('✅ Sesión de conductor activa');
+      }
+    } catch (e) {
+      print('❌ Error verificando sesión: $e');
+    }
+  }
+
+  /// Inicia un temporizador para registrar actividad periódicamente
+  void _startActivityTimer() {
+    // Registrar actividad cada 30 minutos para mantener la sesión activa
+    _activityTimer = Timer.periodic(const Duration(minutes: 30), (_) async {
+      print('⏱️ Registrando actividad periódica del conductor');
+      await DriverSessionService.registerActivity();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
