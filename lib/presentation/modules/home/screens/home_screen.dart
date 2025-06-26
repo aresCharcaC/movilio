@@ -8,7 +8,6 @@ import '../widgets/map_view_widget.dart';
 import '../widgets/location_input_panel.dart';
 import 'destination_search_screen.dart';
 
-
 /// Pantalla principal del mapa después del login
 class MapMainScreen extends StatefulWidget {
   const MapMainScreen({super.key});
@@ -27,7 +26,17 @@ class _MapMainScreenState extends State<MapMainScreen> {
 
     // Inicializar mapa después del primer frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mapViewModel.initializeMap();
+      // Verificar si viene de un cambio de rol
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final isRoleChange = args?['isRoleChange'] ?? false;
+
+      if (isRoleChange) {
+        print('🔄 Detectado cambio de rol - Reseteando mapa para pasajero');
+        _mapViewModel.resetForRoleChange();
+      } else {
+        _mapViewModel.initializeMap();
+      }
     });
   }
 

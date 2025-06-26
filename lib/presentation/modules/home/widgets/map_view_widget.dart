@@ -41,6 +41,7 @@ class MapViewWidget extends StatelessWidget {
                         : null,
                 onPositionChanged: (position, hasGesture) {
                   if (hasGesture) {
+                    // Update map center without triggering notifyListeners
                     mapViewModel.updateMapCenter(
                       position.center,
                       position.zoom,

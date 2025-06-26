@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:joya_express/core/network/api_client.dart';
 import 'package:joya_express/data/services/auth_persistence_service.dart';
 import 'package:joya_express/data/services/user_session_service.dart';
+import 'package:joya_express/data/services/driver_session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../../domain/entities/user_entity.dart';
 import '../../../../../domain/repositories/auth_repository.dart';
@@ -45,10 +47,16 @@ class AuthViewModel extends ChangeNotifier {
     'https://images.icon-icons.com/2483/PNG/512/user_icon_149851.png',
   ];
 
-  // Inicializar desde estado persistido con validación
+  // Inicializar desde estado persistido con validación mejorada
   Future<void> initializeFromPersistedState() async {
     try {
       print('🔄 Iniciando recuperación de estado persistido...');
+
+      // Verificar y reparar sesión si es necesario
+      final sessionRepaired = await UserSessionService.verifyAndRepairSession();
+      print(
+        '🔧 Verificación de sesión: ${sessionRepaired ? "VÁLIDA/REPARADA" : "INVÁLIDA"}',
+      );
 
       // Verificar si hay una sesión de usuario activa con verificación mejorada
       final isUserSessionActive = await UserSessionService.isSessionActive();
@@ -57,6 +65,20 @@ class AuthViewModel extends ChangeNotifier {
       );
 
       if (isUserSessionActive) {
+        // Verificar estado de cookies antes de proceder
+        final apiClient = ApiClient();
+        print('🍪 Estado de cookies: ${apiClient.getCookieInfo()}');
+
+        // Si no hay cookies pero hay sesión activa, intentar sincronizar
+        if (!apiClient.hasCookies()) {
+          print('⚠️ Sesión activa pero sin cookies, sincronizando...');
+          await UserSessionService.syncSessionAfterLogin();
+          await apiClient.reloadCookies();
+          print(
+            '🍪 Estado después de sincronizar: ${apiClient.getCookieInfo()}',
+          );
+        }
+
         // Intentar cargar datos del usuario desde la persistencia primero
         final userData = await UserSessionService.getUserData();
         if (userData != null && _currentUser == null) {
@@ -94,12 +116,36 @@ class AuthViewModel extends ChangeNotifier {
             print('👤 Sesión de usuario recuperada desde backend');
           } catch (loadError) {
             print('⚠️ Error cargando usuario desde backend: $loadError');
+
+            // Si falla cargar desde backend pero tenemos datos locales, usar esos
+            if (userData != null) {
+              print('🔄 Usando datos locales como fallback');
+              try {
+                _currentUser = UserEntity(
+                  id: userData['id'].toString(),
+                  phone: userData['phone'].toString(),
+                  fullName: userData['name'].toString(),
+                  email: userData['email']?.toString(),
+                  profilePhoto: userData['profilePhoto']?.toString(),
+                  createdAt: DateTime.parse(
+                    userData['lastLogin'] ?? DateTime.now().toIso8601String(),
+                  ),
+                );
+                _setState(AuthState.success);
+                print('✅ Usuario restaurado desde datos locales como fallback');
+              } catch (fallbackError) {
+                print('❌ Error en fallback: $fallbackError');
+              }
+            }
           }
         }
 
         // Registrar actividad para mantener la sesión activa
         await UserSessionService.registerActivity();
         print('👤 Actividad de usuario registrada para mantener sesión');
+
+        // Verificar una vez más el estado de cookies después de todo el proceso
+        print('🍪 Estado final de cookies: ${apiClient.getCookieInfo()}');
       } else {
         print('⚠️ No se encontró sesión activa de usuario');
       }
@@ -299,11 +345,8 @@ class AuthViewModel extends ChangeNotifier {
       // Limpiar estado después del registro exitoso
       await AuthPersistenceService.clearAuthFlowState();
 
-      // Activar la sesión de usuario
-      await UserSessionService.activateUserSession();
-
-      // Registrar actividad para mantener la sesión activa
-      await UserSessionService.registerActivity();
+      // Sincronizar sesión después del registro exitoso
+      await UserSessionService.syncSessionAfterLogin();
 
       print(
         'AuthFlow - Usuario registrado exitosamente con persistencia mejorada',
@@ -345,6 +388,9 @@ class AuthViewModel extends ChangeNotifier {
 
       // Activar la sesión de usuario con múltiples capas de seguridad
       await UserSessionService.activateUserSession();
+
+      // Sincronizar sesión después del login exitoso
+      await UserSessionService.syncSessionAfterLogin();
 
       // Registrar actividad para refrescar la sesión
       await UserSessionService.registerActivity();
@@ -476,23 +522,43 @@ class AuthViewModel extends ChangeNotifier {
       // Limpiar la sesión de usuario con verificación adicional
       await UserSessionService.clearUserSession();
 
+      // También limpiar la sesión de conductor si existe (logout de usuario afecta ambos)
+      try {
+        await DriverSessionService.clearDriverSession();
+        print('🚗 Sesión de conductor también limpiada (logout de usuario)');
+      } catch (e) {
+        print('⚠️ Error limpiando sesión de conductor: $e');
+      }
+
       // Verificación adicional para asegurar que la sesión está inactiva
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('user_session_active', false);
+      await prefs.setBool('driver_session_active', false);
 
       print('🔒 Sesión de usuario cerrada completamente');
       _setState(AuthState.initial);
     } catch (e) {
       print('❌ Error en logout: $e');
-      _setError(e.toString());
+
+      // Siempre limpiar el estado local, incluso si hay errores
+      _currentUser = null;
+      _currentPhone = null;
+      _sendCodeResponse = null;
+      _verifyCodeResponse = null;
 
       // Intentar limpiar la sesión como fallback
       try {
         await UserSessionService.clearUserSession();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('user_session_active', false);
+        await prefs.setBool('driver_session_active', false);
         print('🔄 Limpieza de sesión como fallback');
       } catch (fallbackError) {
         print('❌ Error en fallback: $fallbackError');
       }
+
+      // Establecer estado inicial sin error para permitir navegación
+      _setState(AuthState.initial);
     }
   }
 

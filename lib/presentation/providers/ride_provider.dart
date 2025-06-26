@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:joya_express/domain/entities/ride_request_entity.dart';
 import 'package:joya_express/domain/usecases/create_ride_request_usecase.dart';
 import 'package:joya_express/domain/usecases/cancel_and_delete_active_search_usecase.dart';
+import 'package:joya_express/core/services/auth_initialization_service.dart';
 import 'dart:developer' as developer;
 // Provider que maneja el estado de la UI para solicitar viajes
 // Extiende ChangeNotifier para notificar cambios a los widgets que lo escuchan
@@ -36,6 +37,21 @@ class RideProvider extends ChangeNotifier {
 
       developer.log(
         '🚗 Iniciando creación de solicitud de viaje...',
+        name: 'RideProvider',
+      );
+
+      // Verificar autenticación antes de hacer la petición
+      final authService = AuthInitializationService();
+      final isAuthenticated = await authService.ensureAuthenticated();
+
+      if (!isAuthenticated) {
+        throw Exception(
+          'Sesión expirada. Por favor, inicia sesión nuevamente.',
+        );
+      }
+
+      developer.log(
+        '✅ Autenticación verificada, procediendo con la solicitud...',
         name: 'RideProvider',
       );
 

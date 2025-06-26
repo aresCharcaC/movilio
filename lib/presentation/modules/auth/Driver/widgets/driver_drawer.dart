@@ -186,48 +186,49 @@ class DriverDrawer extends StatelessWidget {
     Navigator.pop(context);
 
     try {
-      // Usar WidgetsBinding para programar la acción después de que el frame actual se complete
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        // Desactiva el modo conductor pero mantiene la sesión activa
-        final success = await driverAuthViewModel.switchToPassengerMode();
+      print('🔄 Iniciando cambio a modo pasajero desde drawer...');
 
-        if (success) {
-          // Esperar un tiempo suficiente para que se complete la transición de estado
-          await Future.delayed(const Duration(milliseconds: 300));
+      // Desactiva el modo conductor pero mantiene la sesión activa
+      final success = await driverAuthViewModel.switchToPassengerMode();
 
-          // Navega a la pantalla principal de pasajero
+      if (success) {
+        print('✅ Cambio a modo pasajero exitoso, navegando al home...');
+
+        // Usar addPostFrameCallback para asegurar que la navegación ocurra después del build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           if (context.mounted) {
             Navigator.pushNamedAndRemoveUntil(
               context,
               AppRoutes.home, // Pantalla principal de pasajero
               (route) => false,
+              arguments: {'isRoleChange': true}, // Indicar que es cambio de rol
+            );
+            print(
+              '🚀 Navegación al home de pasajero completada con reseteo de mapa',
             );
           }
-        } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('No se pudo cambiar al modo pasajero'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
-      });
-    } catch (e) {
-      // Manejar errores
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+        });
+      } else {
+        print('❌ Error en cambio a modo pasajero');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Error al cambiar a modo pasajero: ${e.toString()}',
-              ),
+            const SnackBar(
+              content: Text('No se pudo cambiar al modo pasajero'),
               backgroundColor: Colors.red,
             ),
           );
         }
-      });
+      }
+    } catch (e) {
+      print('❌ Error en _switchToPassenger: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cambiar a modo pasajero: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -252,21 +253,27 @@ class DriverDrawer extends StatelessWidget {
     if (confirmed == true) {
       try {
         await driverAuthViewModel.logout();
-        // ignore: use_build_context_synchronously
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          '/driver-login', // O la ruta de login que corresponda
-          (route) => false,
-        );
+
+        // Usar addPostFrameCallback para asegurar que la navegación ocurra después del build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRoutes.home, // Pantalla principal de pasajero
+              (route) => false,
+            );
+          }
+        });
       } catch (e) {
         // Manejar errores de logout
-        // ignore: use_build_context_synchronously
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cerrar sesión: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al cerrar sesión: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

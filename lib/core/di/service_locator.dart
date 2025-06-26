@@ -161,8 +161,8 @@ void _setupRepositories() {
 void _setupViewModels() {
   print('Configurando ViewModels...');
 
-  // DriverAuthViewModel
-  sl.registerFactory<DriverAuthViewModel>(
+  // DriverAuthViewModel - Cambiar a singleton para evitar múltiples instancias
+  sl.registerLazySingleton<DriverAuthViewModel>(
     () => DriverAuthViewModel(sl<DriverRepository>(), sl<FileUploadService>()),
   );
 

@@ -63,6 +63,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   json_annotation: ^4.9.0
   socket_io_client: ^3.1.2
+  jwt_decoder: ^2.0.1 # Para decodificar tokens JWT
 
 dev_dependencies:
   flutter_test:

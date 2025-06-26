@@ -36,13 +36,14 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   void _validateForm() {
     final dni = _dniController.text.trim();
     final password = _passwordController.text.trim();
-    
-    final isValid = dni.isNotEmpty && 
-                   dni.length == 8 && 
-                   RegExp(r'^\d+$').hasMatch(dni) &&
-                   password.isNotEmpty && 
-                   password.length >= 6;
-    
+
+    final isValid =
+        dni.isNotEmpty &&
+        dni.length == 8 &&
+        RegExp(r'^\d+$').hasMatch(dni) &&
+        password.isNotEmpty &&
+        password.length >= 6;
+
     if (isValid != _isFormValid) {
       setState(() {
         _isFormValid = isValid;
@@ -52,21 +53,21 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
   void _login() async {
     if (!_formKey.currentState!.validate() || !_isFormValid) return;
-    
+
     // Ocultar teclado
     FocusScope.of(context).unfocus();
-    
+
     try {
       final viewModel = context.read<DriverAuthViewModel>();
-      
+
       // Limpiar errores previos
       viewModel.clearError();
-      
+
       final success = await viewModel.login(
         _dniController.text.trim(),
         _passwordController.text.trim(),
       );
-      
+
       if (mounted) {
         if (success) {
           // Navegación exitosa
@@ -108,7 +109,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = keyboardHeight > 0;
-    
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: Consumer<DriverAuthViewModel>(
@@ -126,7 +127,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   ),
                 ),
               ),
-              
+
               // Overlay con gradiente
               Container(
                 width: double.infinity,
@@ -143,7 +144,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   ),
                 ),
               ),
-              
+
               // Header con logo y texto - Ocupa el 30% superior
               if (!isKeyboardOpen)
                 Positioned(
@@ -153,7 +154,10 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   height: screenHeight * 0.3,
                   child: SafeArea(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 16,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -203,13 +207,14 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                     ),
                   ),
                 ),
-              
+
               // Modal de login - Ocupa el 70% inferior
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
-                height: isKeyboardOpen ? screenHeight * 0.85 : screenHeight * 0.7,
+                height:
+                    isKeyboardOpen ? screenHeight * 0.85 : screenHeight * 0.7,
                 child: Container(
                   width: double.infinity,
                   decoration: const BoxDecoration(
@@ -226,7 +231,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         left: 32,
                         right: 32,
                         top: 32,
-                        bottom: 32 + (isKeyboardOpen ? keyboardHeight * 0.1 : 0),
+                        bottom:
+                            32 + (isKeyboardOpen ? keyboardHeight * 0.1 : 0),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -235,7 +241,20 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                           Row(
                             children: [
                               GestureDetector(
-                                onTap: () => Navigator.pop(context),
+                                onTap: () {
+                                  // Use addPostFrameCallback to prevent navigation issues
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (context.mounted) {
+                                      Navigator.pushNamedAndRemoveUntil(
+                                        context,
+                                        '/home', // Navigate to passenger home
+                                        (route) => false,
+                                      );
+                                    }
+                                  });
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
@@ -262,9 +281,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               ),
                             ],
                           ),
-                          
+
                           SizedBox(height: isKeyboardOpen ? 24 : 40),
-                        
+
                           // Campo DNI
                           Container(
                             decoration: BoxDecoration(
@@ -281,9 +300,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               controller: _dniController,
                               decoration: InputDecoration(
                                 hintText: 'Dni',
-                                hintStyle: AppTextStyles.interInputHint.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
+                                hintStyle: AppTextStyles.interInputHint
+                                    .copyWith(color: AppColors.textSecondary),
                                 prefixIcon: Container(
                                   margin: const EdgeInsets.all(12),
                                   padding: const EdgeInsets.all(8),
@@ -329,7 +347,13 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               style: AppTextStyles.interInput,
                               keyboardType: TextInputType.number,
                               maxLength: 8,
-                              buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                              buildCounter:
+                                  (
+                                    context, {
+                                    required currentLength,
+                                    required isFocused,
+                                    maxLength,
+                                  }) => null,
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Por favor ingrese su DNI';
@@ -344,9 +368,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               },
                             ),
                           ),
-                          
+
                           const SizedBox(height: 24),
-                          
+
                           // Campo Contraseña
                           Container(
                             decoration: BoxDecoration(
@@ -363,9 +387,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               controller: _passwordController,
                               decoration: InputDecoration(
                                 hintText: 'Contraseña',
-                                hintStyle: AppTextStyles.interInputHint.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
+                                hintStyle: AppTextStyles.interInputHint
+                                    .copyWith(color: AppColors.textSecondary),
                                 prefixIcon: Container(
                                   margin: const EdgeInsets.all(12),
                                   padding: const EdgeInsets.all(8),
@@ -381,7 +404,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                                 ),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
                                     color: AppColors.textSecondary,
                                   ),
                                   onPressed: () {
@@ -432,9 +457,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               },
                             ),
                           ),
-                          
+
                           const SizedBox(height: 40),
-                          
+
                           // Botón de Login
                           Container(
                             height: 60,
@@ -449,38 +474,56 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               ],
                             ),
                             child: ElevatedButton(
-                              onPressed: (_isFormValid && !viewModel.isLoading) ? _login : null,
+                              onPressed:
+                                  (_isFormValid && !viewModel.isLoading)
+                                      ? _login
+                                      : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: AppColors.white,
-                                disabledBackgroundColor: const Color.fromARGB(255, 246, 134, 134),
-                                disabledForegroundColor: const Color.fromARGB(255, 249, 224, 224),
+                                disabledBackgroundColor: const Color.fromARGB(
+                                  255,
+                                  246,
+                                  134,
+                                  134,
+                                ),
+                                disabledForegroundColor: const Color.fromARGB(
+                                  255,
+                                  249,
+                                  224,
+                                  224,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 elevation: 0,
                               ),
-                              child: viewModel.isLoading
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              child:
+                                  viewModel.isLoading
+                                      ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                      : Text(
+                                        'Iniciar Sesion',
+                                        style: AppTextStyles.poppinsButton
+                                            .copyWith(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
-                                    )
-                                  : Text(
-                                      'Iniciar Sesion',
-                                      style: AppTextStyles.poppinsButton.copyWith(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
                             ),
                           ),
-                            
+
                           SizedBox(height: isKeyboardOpen ? 16 : 32),
-                          
+
                           // Enlace de registro
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -493,7 +536,10 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               ),
                               GestureDetector(
                                 onTap: () {
-                                  Navigator.pushNamed(context, '/driver-register');
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/driver-register',
+                                  );
                                 },
                                 child: Text(
                                   'Únete Ahora',
@@ -506,7 +552,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                               ),
                             ],
                           ),
-                          
+
                           SizedBox(height: isKeyboardOpen ? 20 : 40),
                         ],
                       ),
@@ -521,4 +567,5 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     );
   }
 }
-//Hace falta desacoplar esta pantalla 
+
+//Hace falta desacoplar esta pantalla

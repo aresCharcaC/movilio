@@ -1,51 +1,38 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'api_endpoints.dart';
 import 'api_exceptions.dart';
+import '../services/token_service.dart';
+import 'dart:developer' as developer;
 
+/// Cliente API mejorado que usa TokenService para autenticación JWT
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
-  ApiClient._internal() {
-    // Cargar cookies al inicializar
-    _initializeCookies();
-  }
+  ApiClient._internal();
 
   final http.Client _client = http.Client();
-  String? _sessionCookies; // Para almacenar las cookies de sesión
-  bool _cookiesLoaded = false;
+  final TokenService _tokenService = TokenService();
 
-  // Inicializar cookies al crear la instancia
-  Future<void> _initializeCookies() async {
-    if (!_cookiesLoaded) {
-      await loadCookiesFromStorage();
-      _cookiesLoaded = true;
-    }
-  }
-
-  // GET Request con manejo de cookies
+  /// GET Request con manejo automático de tokens
   Future<Map<String, dynamic>> get(String endpoint) async {
-    try {
+    return await _makeRequestWithAuth(() async {
       final headers = await _getHeaders();
       final response = await _client
           .get(Uri.parse('${ApiEndpoints.baseUrl}$endpoint'), headers: headers)
           .timeout(const Duration(seconds: 30));
 
-      _handleCookies(response); // Procesar cookies de respuesta
       return _handleResponse(response);
-    } catch (e) {
-      throw _handleError(e);
-    }
+    });
   }
 
-  // POST Request con manejo de cookies
+  /// POST Request con manejo automático de tokens
   Future<Map<String, dynamic>> post(
     String endpoint,
     Map<String, dynamic> body,
   ) async {
-    try {
+    return await _makeRequestWithAuth(() async {
       final headers = await _getHeaders();
       final response = await _client
           .post(
@@ -55,19 +42,18 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 30));
 
-      _handleCookies(response); // Procesar cookies de respuesta
+      // Procesar tokens de respuesta si los hay
+      await _handleTokensFromResponse(response);
       return _handleResponse(response);
-    } catch (e) {
-      throw _handleError(e);
-    }
+    });
   }
 
-  // PUT Request con manejo de cookies
+  /// PUT Request con manejo automático de tokens
   Future<Map<String, dynamic>> put(
     String endpoint,
     Map<String, dynamic> body,
   ) async {
-    try {
+    return await _makeRequestWithAuth(() async {
       final headers = await _getHeaders();
       final response = await _client
           .put(
@@ -77,19 +63,17 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 30));
 
-      _handleCookies(response);
+      await _handleTokensFromResponse(response);
       return _handleResponse(response);
-    } catch (e) {
-      throw _handleError(e);
-    }
+    });
   }
 
-  // PATCH Request con manejo de cookies
+  /// PATCH Request con manejo automático de tokens
   Future<Map<String, dynamic>> patch(
     String endpoint,
     Map<String, dynamic> body,
   ) async {
-    try {
+    return await _makeRequestWithAuth(() async {
       final headers = await _getHeaders();
       final response = await _client
           .patch(
@@ -99,16 +83,14 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 30));
 
-      _handleCookies(response);
+      await _handleTokensFromResponse(response);
       return _handleResponse(response);
-    } catch (e) {
-      throw _handleError(e);
-    }
+    });
   }
 
-  // DELETE Request con manejo de cookies
+  /// DELETE Request con manejo automático de tokens
   Future<Map<String, dynamic>> delete(String endpoint) async {
-    try {
+    return await _makeRequestWithAuth(() async {
       final headers = await _getHeaders();
       final response = await _client
           .delete(
@@ -117,79 +99,194 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 30));
 
-      _handleCookies(response);
+      await _handleTokensFromResponse(response);
       return _handleResponse(response);
-    } catch (e) {
-      throw _handleError(e);
-    }
+    });
   }
 
-  // Obtener headers con cookies de sesión
+  /// Obtener headers con token de autorización
   Future<Map<String, String>> _getHeaders() async {
     final headers = Map<String, String>.from(ApiEndpoints.jsonHeaders);
 
-    // Agregar cookies de sesión si existen
-    if (_sessionCookies != null) {
-      headers['Cookie'] = _sessionCookies!;
+    // Intentar obtener un token válido
+    final accessToken = await _getValidAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+      developer.log('🔑 Token agregado a headers', name: 'ApiClient');
+    } else {
+      developer.log(
+        '⚠️ No hay token válido para la petición',
+        name: 'ApiClient',
+      );
     }
 
     return headers;
   }
 
-  // Procesar cookies de respuesta del servidor
-  void _handleCookies(http.Response response) {
-    final cookies = response.headers['set-cookie'];
-    if (cookies != null) {
-      // Parsear y almacenar cookies
-      final cookieList = cookies.split(',');
-      final sessionCookies = <String>[];
+  /// Obtiene un token de acceso válido, refrescándolo si es necesario
+  Future<String?> _getValidAccessToken() async {
+    try {
+      // Verificar si tenemos un token válido
+      final hasValidToken = await _tokenService.hasValidAccessToken();
+      if (hasValidToken) {
+        final token = await _tokenService.getAccessToken();
+        developer.log('✅ Token válido obtenido', name: 'ApiClient');
+        return token;
+      }
 
-      for (final cookie in cookieList) {
-        final cookieParts = cookie.trim().split(';');
-        if (cookieParts.isNotEmpty) {
-          final cookieNameValue = cookieParts[0];
-          if (cookieNameValue.contains('accessToken') ||
-              cookieNameValue.contains('refreshToken')) {
-            sessionCookies.add(cookieNameValue);
+      // Si no es válido, intentar refrescarlo
+      developer.log(
+        '🔄 Token no válido, intentando refrescar...',
+        name: 'ApiClient',
+      );
+      final refreshed = await _refreshToken();
+      if (refreshed) {
+        final token = await _tokenService.getAccessToken();
+        developer.log('✅ Token refrescado exitosamente', name: 'ApiClient');
+        return token;
+      }
+
+      developer.log('❌ No se pudo obtener token válido', name: 'ApiClient');
+      return null;
+    } catch (e) {
+      developer.log('❌ Error obteniendo token válido: $e', name: 'ApiClient');
+      return null;
+    }
+  }
+
+  /// Refresca el token usando el refresh token
+  Future<bool> _refreshToken() async {
+    try {
+      final refreshToken = await _tokenService.getRefreshToken();
+      if (refreshToken == null) {
+        developer.log('❌ No hay refresh token disponible', name: 'ApiClient');
+        return false;
+      }
+
+      developer.log('🔄 Iniciando refresh de token...', name: 'ApiClient');
+
+      // Hacer petición de refresh con el refresh token en el header
+      final headers = Map<String, String>.from(ApiEndpoints.jsonHeaders);
+      headers['Authorization'] = 'Bearer $refreshToken';
+
+      final response = await _client
+          .post(
+            Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.refresh}'),
+            headers: headers,
+            body: json.encode({}),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        await _handleTokensFromResponse(response);
+        developer.log('✅ Token refrescado exitosamente', name: 'ApiClient');
+        return true;
+      } else {
+        developer.log(
+          '❌ Error refrescando token: ${response.statusCode}',
+          name: 'ApiClient',
+        );
+        return false;
+      }
+    } catch (e) {
+      developer.log('❌ Error en refresh de token: $e', name: 'ApiClient');
+      return false;
+    }
+  }
+
+  /// Procesa tokens de la respuesta del servidor
+  Future<void> _handleTokensFromResponse(http.Response response) async {
+    try {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = json.decode(response.body);
+
+        // Buscar tokens en la respuesta
+        String? accessToken;
+        String? refreshToken;
+        Map<String, dynamic>? userData;
+
+        // Verificar diferentes estructuras de respuesta
+        if (responseData is Map<String, dynamic>) {
+          // Estructura directa
+          accessToken =
+              responseData['accessToken'] ?? responseData['access_token'];
+          refreshToken =
+              responseData['refreshToken'] ?? responseData['refresh_token'];
+          userData = responseData['user'] ?? responseData['data'];
+
+          // Estructura anidada en 'data'
+          if (responseData['data'] is Map<String, dynamic>) {
+            final data = responseData['data'] as Map<String, dynamic>;
+            accessToken =
+                accessToken ?? data['accessToken'] ?? data['access_token'];
+            refreshToken =
+                refreshToken ?? data['refreshToken'] ?? data['refresh_token'];
+            userData = userData ?? data['user'] ?? data;
+          }
+
+          // Estructura anidada en 'tokens'
+          if (responseData['tokens'] is Map<String, dynamic>) {
+            final tokens = responseData['tokens'] as Map<String, dynamic>;
+            accessToken =
+                accessToken ?? tokens['accessToken'] ?? tokens['access_token'];
+            refreshToken =
+                refreshToken ??
+                tokens['refreshToken'] ??
+                tokens['refresh_token'];
+          }
+
+          // También buscar en cookies del header Set-Cookie
+          final setCookieHeader = response.headers['set-cookie'];
+          if (setCookieHeader != null) {
+            final cookies = setCookieHeader.split(',');
+            for (final cookie in cookies) {
+              if (cookie.trim().startsWith('accessToken=')) {
+                final tokenValue = cookie.split('=')[1].split(';')[0];
+                accessToken = accessToken ?? tokenValue;
+              } else if (cookie.trim().startsWith('refreshToken=')) {
+                final tokenValue = cookie.split('=')[1].split(';')[0];
+                refreshToken = refreshToken ?? tokenValue;
+              }
+            }
           }
         }
-      }
 
-      if (sessionCookies.isNotEmpty) {
-        _sessionCookies = sessionCookies.join('; ');
-        _saveCookiesToStorage();
+        // Guardar tokens si se encontraron
+        if (accessToken != null && refreshToken != null) {
+          await _tokenService.saveTokens(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            userData: userData,
+          );
+          developer.log(
+            '💾 Tokens completos guardados desde respuesta',
+            name: 'ApiClient',
+          );
+        } else if (accessToken != null) {
+          // Solo actualizar access token si no hay refresh token
+          await _tokenService.updateAccessToken(accessToken);
+          developer.log(
+            '🔄 Access token actualizado desde respuesta',
+            name: 'ApiClient',
+          );
+        }
       }
+    } catch (e) {
+      developer.log(
+        '⚠️ Error procesando tokens de respuesta: $e',
+        name: 'ApiClient',
+      );
+      // No relanzar el error, ya que esto es opcional
     }
   }
 
-  // Guardar cookies en almacenamiento local
-  Future<void> _saveCookiesToStorage() async {
-    if (_sessionCookies != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('session_cookies', _sessionCookies!);
-    }
-  }
-
-  // Cargar cookies desde almacenamiento local
-  Future<void> loadCookiesFromStorage() async {
-    final prefs = await SharedPreferences.getInstance();
-    _sessionCookies = prefs.getString('session_cookies');
-  }
-
-  // Limpiar cookies de sesión
-  Future<void> clearCookies() async {
-    _sessionCookies = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('session_cookies');
-  }
-
+  /// Maneja respuestas HTTP
   Map<String, dynamic> _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
 
     if (statusCode >= 200 && statusCode < 300) {
       try {
         if (response.body.isEmpty) {
-          // Si el cuerpo está vacío, devuelve un mapa vacío
           return {};
         }
         final decoded = json.decode(response.body);
@@ -214,7 +311,7 @@ class ApiClient {
     throw ApiException(message: 'Respuesta inesperada del servidor');
   }
 
-  // Manejar errores HTTP específicos
+  /// Maneja errores HTTP específicos
   void _handleHttpError(http.Response response) {
     final statusCode = response.statusCode;
     String message = 'Error desconocido';
@@ -226,11 +323,12 @@ class ApiClient {
       // Si no se puede parsear, usar mensaje por defecto
     }
 
+    developer.log('❌ Error HTTP $statusCode: $message', name: 'ApiClient');
+
     switch (statusCode) {
       case 400:
         throw ValidationException(message: message);
       case 401:
-        // Token expirado, intentar refresh automáticamente
         throw AuthException(message: message);
       case 403:
         throw AuthException(message: 'Acceso denegado');
@@ -248,7 +346,7 @@ class ApiClient {
     }
   }
 
-  // Manejar errores generales
+  /// Maneja errores generales
   Exception _handleError(dynamic error) {
     if (error is ApiException) {
       return error;
@@ -260,6 +358,74 @@ class ApiClient {
       return ApiException(message: 'Error inesperado: ${error.toString()}');
     }
   }
+
+  /// Ejecuta una petición con manejo automático de autenticación
+  Future<Map<String, dynamic>> _makeRequestWithAuth(
+    Future<Map<String, dynamic>> Function() requestFunction,
+  ) async {
+    try {
+      return await requestFunction();
+    } on AuthException catch (e) {
+      developer.log(
+        '🔑 Error de autenticación: ${e.message}',
+        name: 'ApiClient',
+      );
+
+      // Si es un error 401, intentar refrescar token una vez más
+      if (e.message.toLowerCase().contains('unauthorized') ||
+          e.message.toLowerCase().contains('token') ||
+          e.message.toLowerCase().contains('expired')) {
+        developer.log(
+          '🔄 Intentando refrescar token por error 401...',
+          name: 'ApiClient',
+        );
+
+        final refreshed = await _refreshToken();
+        if (refreshed) {
+          developer.log(
+            '✅ Token refrescado, reintentando petición...',
+            name: 'ApiClient',
+          );
+          // Reintentar la petición original una sola vez
+          return await requestFunction();
+        } else {
+          developer.log('❌ No se pudo refrescar token', name: 'ApiClient');
+          // Limpiar tokens inválidos
+          await _tokenService.clearTokens();
+          throw AuthException(
+            message: 'Sesión expirada. Por favor, inicia sesión nuevamente.',
+          );
+        }
+      }
+
+      rethrow;
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// Limpia todos los tokens (equivalente a clearCookies)
+  Future<void> clearTokens() async {
+    await _tokenService.clearTokens();
+    developer.log('🧹 Tokens limpiados', name: 'ApiClient');
+  }
+
+  /// Verifica si hay tokens válidos (equivalente a hasCookies)
+  Future<bool> hasValidTokens() async {
+    return await _tokenService.hasActiveSession();
+  }
+
+  /// Obtiene información de tokens para debugging (equivalente a getCookieInfo)
+  Future<String> getTokenInfo() async {
+    return await _tokenService.getTokenInfo();
+  }
+
+  /// Métodos de compatibilidad con el código existente
+  Future<void> clearCookies() async => await clearTokens();
+  bool hasCookies() => false; // Deprecated, usar hasValidTokens()
+  String getCookieInfo() => 'Usar getTokenInfo() en su lugar';
+  Future<void> loadCookiesFromStorage() async {} // No-op
+  Future<void> reloadCookies() async {} // No-op
 
   void dispose() {
     _client.close();

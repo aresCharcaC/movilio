@@ -1,10 +1,10 @@
 import 'package:joya_express/core/network/api_client.dart';
 import 'package:joya_express/core/network/api_endpoints.dart';
-import 'package:joya_express/core/network/api_exceptions.dart';
 import 'package:joya_express/data/models/ride_request_model.dart';
 import 'dart:developer' as developer;
 
 /// Servicio encargado de gestionar todas las operaciones relacionadas con viajes
+/// Ahora simplificado para usar el manejo automático de tokens del ApiClient
 class RideRemoteDataSource {
   final ApiClient _apiClient;
 
@@ -28,27 +28,11 @@ class RideRemoteDataSource {
         name: 'RideRemoteDataSource',
       );
       return RideRequestModel.fromJson(response['data']);
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return createRideRequest(request);
-    } on ValidationException catch (e) {
-      developer.log(
-        '❌ Error de validación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      rethrow;
-    } on ServerException catch (e) {
-      developer.log(
-        '🔥 Error del servidor: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      rethrow;
     } catch (e) {
-      developer.log('❌ Error inesperado: $e', name: 'RideRemoteDataSource');
+      developer.log(
+        '❌ Error creando solicitud de viaje: $e',
+        name: 'RideRemoteDataSource',
+      );
       rethrow;
     }
   }
@@ -68,13 +52,6 @@ class RideRemoteDataSource {
         name: 'RideRemoteDataSource',
       );
       return RideRequestModel.fromJson(response['data']);
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return getRideRequest(id);
     } catch (e) {
       developer.log(
         '❌ Error al obtener detalles del viaje: $e',
@@ -100,13 +77,6 @@ class RideRemoteDataSource {
         name: 'RideRemoteDataSource',
       );
       return ridesData.map((data) => RideRequestModel.fromJson(data)).toList();
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return getActiveRideRequests();
     } catch (e) {
       developer.log(
         '❌ Error al obtener viajes activos: $e',
@@ -127,13 +97,6 @@ class RideRemoteDataSource {
         '✅ Viaje cancelado exitosamente',
         name: 'RideRemoteDataSource',
       );
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return cancelRideRequest(id);
     } catch (e) {
       developer.log(
         '❌ Error al cancelar viaje: $e',
@@ -157,13 +120,6 @@ class RideRemoteDataSource {
         '✅ Búsqueda activa eliminada exitosamente',
         name: 'RideRemoteDataSource',
       );
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return cancelAndDeleteActiveSearch();
     } catch (e) {
       developer.log(
         '❌ Error al eliminar búsqueda activa: $e',
@@ -196,47 +152,12 @@ class RideRemoteDataSource {
         name: 'RideRemoteDataSource',
       );
       return response;
-    } on AuthException catch (e) {
-      developer.log(
-        '🔑 Error de autenticación: ${e.message}',
-        name: 'RideRemoteDataSource',
-      );
-      await _refreshToken();
-      return makeDriverOffer(
-        rideId: rideId,
-        tarifaPropuesta: tarifaPropuesta,
-        mensaje: mensaje,
-      );
     } catch (e) {
       developer.log(
         '❌ Error al enviar oferta: $e',
         name: 'RideRemoteDataSource',
       );
       rethrow;
-    }
-  }
-
-  /// Refresca el token de autenticación
-  Future<void> _refreshToken() async {
-    try {
-      developer.log(
-        '🔄 Intentando refrescar token...',
-        name: 'RideRemoteDataSource',
-      );
-      await _apiClient.post(ApiEndpoints.refresh, {});
-      developer.log(
-        '✅ Token refrescado exitosamente',
-        name: 'RideRemoteDataSource',
-      );
-    } catch (e) {
-      developer.log(
-        '❌ Error refrescando token: $e',
-        name: 'RideRemoteDataSource',
-      );
-      await _apiClient.clearCookies();
-      throw AuthException(
-        message: 'Sesión expirada. Por favor, inicia sesión nuevamente.',
-      );
     }
   }
 }

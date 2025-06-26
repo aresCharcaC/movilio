@@ -1,5 +1,6 @@
 // lib/presentation/modules/map/viewmodels/map_viewmodel.dart (ACTUALIZADO)
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'dart:math' as math;
 import '../../../../domain/entities/location_entity.dart';
@@ -91,7 +92,7 @@ class MapViewModel extends ChangeNotifier {
   int get routeDuration => _currentTrip?.durationMinutes ?? 0;
 
   /// Inicializar el mapa con la ubicación actual
-  Future<void> initializeMap() async {
+  Future<void> initializeMap({bool cleanStart = false}) async {
     try {
       _setState(MapState.loading);
 
@@ -99,7 +100,12 @@ class MapViewModel extends ChangeNotifier {
 
       if (currentLoc != null) {
         _currentLocation = currentLoc;
-        _pickupLocation = currentLoc.copyWith();
+
+        // Si es un inicio limpio (cambio de rol), NO establecer pickup automáticamente
+        if (!cleanStart) {
+          _pickupLocation = currentLoc.copyWith();
+        }
+
         _currentCenter = currentLoc.coordinates;
         mapController.move(_currentCenter, _currentZoom);
       }
@@ -110,6 +116,29 @@ class MapViewModel extends ChangeNotifier {
     }
   }
 
+  /// Resetear completamente el mapa para cambio de rol (conductor <-> pasajero)
+  void resetForRoleChange() {
+    print('🔄 Reseteando MapViewModel para cambio de rol...');
+
+    // Limpiar todas las ubicaciones excepto la actual
+    _pickupLocation = null;
+    _destinationLocation = null;
+
+    // Limpiar ruta y errores
+    _clearRoute();
+
+    // Resetear estado a inicial
+    _state = MapState.loading;
+    _errorMessage = null;
+
+    // Reinicializar con inicio limpio
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      initializeMap(cleanStart: true);
+    });
+
+    print('✅ MapViewModel reseteado - Home limpio para nuevo rol');
+  }
+
   /// Establecer punto de recogida tocando en el mapa
   Future<void> setPickupLocationFromTap(LatLng coordinates) async {
     try {
@@ -118,7 +147,11 @@ class MapViewModel extends ChangeNotifier {
       );
       _pickupLocation = location;
       _clearRoute();
-      notifyListeners();
+
+      // Usar addPostFrameCallback para evitar setState durante build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
 
       print(
         'Punto de recogida establecido en: ${location.address ?? coordinates.toString()}',
@@ -134,7 +167,11 @@ class MapViewModel extends ChangeNotifier {
       _pickupLocation = _currentLocation!.copyWith();
       mapController.move(_currentLocation!.coordinates, _currentZoom);
       _clearRoute();
-      notifyListeners();
+
+      // Usar addPostFrameCallback para evitar setState durante build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 
@@ -147,18 +184,34 @@ class MapViewModel extends ChangeNotifier {
 
   /// Actualizar centro del mapa
   void updateMapCenter(LatLng center, double zoom) {
-    _currentCenter = center;
-    _currentZoom = zoom;
+    // Only update if there's a significant change to prevent unnecessary rebuilds
+    const double threshold = 0.0001; // Minimum change threshold
+    const double zoomThreshold = 0.1;
+
+    final latDiff = (_currentCenter.latitude - center.latitude).abs();
+    final lngDiff = (_currentCenter.longitude - center.longitude).abs();
+    final zoomDiff = (_currentZoom - zoom).abs();
+
+    if (latDiff > threshold ||
+        lngDiff > threshold ||
+        zoomDiff > zoomThreshold) {
+      _currentCenter = center;
+      _currentZoom = zoom;
+      // Don't call notifyListeners() here to prevent setState during build
+    }
   }
 
   /// Establecer destino y calcular ruta automáticamente
   Future<void> setDestinationLocation(LocationEntity destination) async {
     _destinationLocation = destination;
-    notifyListeners();
 
-    if (hasPickupLocation && hasDestinationLocation) {
-      await calculateRoute();
-    }
+    // Usar addPostFrameCallback para evitar setState durante build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+      if (hasPickupLocation && hasDestinationLocation) {
+        calculateRoute();
+      }
+    });
   }
 
   /// Calcular ruta vehicular CON MANEJO MEJORADO DE ERRORES
@@ -280,14 +333,18 @@ class MapViewModel extends ChangeNotifier {
   /// Limpiar ruta actual
   void clearRoute() {
     _clearRoute();
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   /// Limpiar destino
   void clearDestination() {
     _destinationLocation = null;
     _clearRoute();
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   /// Limpiar todas las ubicaciones (NUEVO - Para errores de no hay ruta vehicular)
@@ -295,7 +352,9 @@ class MapViewModel extends ChangeNotifier {
     _pickupLocation = null;
     _destinationLocation = null;
     _clearRoute();
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
     print(
       '🗑️ Ubicaciones limpiadas - Usuario puede seleccionar nuevos puntos',
     );
@@ -314,7 +373,9 @@ class MapViewModel extends ChangeNotifier {
       _routeState = RouteState.idle;
       _routeErrorMessage = null;
       _routeErrorType = null;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 
@@ -322,27 +383,35 @@ class MapViewModel extends ChangeNotifier {
   void _setState(MapState newState) {
     _state = newState;
     _errorMessage = null;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _setError(String error) {
     _state = MapState.error;
     _errorMessage = error;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _setRouteState(RouteState newState) {
     _routeState = newState;
     _routeErrorMessage = null;
     _routeErrorType = null;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _setRouteError(String error, RouteErrorType errorType) {
     _routeState = RouteState.error;
     _routeErrorMessage = error;
     _routeErrorType = errorType;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _clearRoute() {

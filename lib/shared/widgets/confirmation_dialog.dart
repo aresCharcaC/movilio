@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:joya_express/core/constants/app_colors.dart';
 import 'package:joya_express/core/constants/app_strings.dart';
 import 'package:joya_express/core/constants/app_text_styles.dart';
+
 /// ConfirmationDialog
 /// ------------------
 /// Diálogo reutilizable para confirmar acciones, como cerrar sesión.
@@ -29,18 +30,22 @@ class ConfirmationDialog extends StatelessWidget {
 
   /// Método estático para mostrar el diálogo de logout fácilmente
 
-  static Future<bool?> showLogoutDialog(BuildContext context, VoidCallback onConfirm) {
+  static Future<bool?> showLogoutDialog(
+    BuildContext context,
+    VoidCallback onConfirm,
+  ) {
     return showDialog<bool>(
       context: context,
-      barrierDismissible: false,// El usuario no puede cerrar tocando fuera
-      builder: (context) => ConfirmationDialog(
-        title: AppStrings.logoutTitle,
-        message: AppStrings.logoutMessage,
-        confirmText: AppStrings.logoutConfirm,
-        cancelText: AppStrings.logoutCancel,
-        confirmButtonColor: AppColors.primary,
-        onConfirm: onConfirm,
-      ),
+      barrierDismissible: false, // El usuario no puede cerrar tocando fuera
+      builder:
+          (context) => ConfirmationDialog(
+            title: AppStrings.logoutTitle,
+            message: AppStrings.logoutMessage,
+            confirmText: AppStrings.logoutConfirm,
+            cancelText: AppStrings.logoutCancel,
+            confirmButtonColor: AppColors.primary,
+            onConfirm: onConfirm,
+          ),
     );
   }
 
@@ -48,9 +53,7 @@ class ConfirmationDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         title,
         style: AppTextStyles.poppinsHeading3,
@@ -88,8 +91,10 @@ class ConfirmationDialog extends StatelessWidget {
             Expanded(
               child: ElevatedButton(
                 onPressed: () {
-                  Navigator.of(context).pop(true);// Cierra el diálogo y devuelve true
-                  onConfirm();// Ejecuta la acción de confirmación
+                  Navigator.of(
+                    context,
+                  ).pop(true); // Cierra el diálogo y devuelve true
+                  // NO ejecutar onConfirm aquí - se ejecutará en el widget padre
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: confirmButtonColor ?? AppColors.primary,
@@ -98,10 +103,7 @@ class ConfirmationDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text(
-                  confirmText,
-                  style: AppTextStyles.poppinsButton,
-                ),
+                child: Text(confirmText, style: AppTextStyles.poppinsButton),
               ),
             ),
           ],

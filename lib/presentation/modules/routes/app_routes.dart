@@ -30,11 +30,9 @@ class AppRoutes {
   // RUTAS DE CONDUCTOR
   static const String driverLogin = '/driver-login';
   static const String driverRegister = '/driver-register';
-  static const String driverPendingApproval = '/driver-pending-approval'; 
+  static const String driverPendingApproval = '/driver-pending-approval';
   static const String driverHome = '/driver-home';
   static const String driverProfile = '/driver-profile';
-
-  
 
   static Map<String, WidgetBuilder> get routes => {
     welcome: (context) => const WelcomeScreen(),
@@ -61,5 +59,3 @@ class AppRoutes {
     driverProfile: (context) => DriverProfileScreen(),
   };
 }
-
-

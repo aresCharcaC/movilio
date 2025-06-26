@@ -1,6 +1,7 @@
 // lib/presentation/viewmodels/driver_auth_viewmodel.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:joya_express/core/network/api_exceptions.dart';
 import 'package:joya_express/domain/entities/driver_entity.dart';
@@ -19,8 +20,10 @@ class DriverAuthViewModel extends ChangeNotifier {
   DriverEntity? _currentDriver;
   bool _isAuthenticated = false;
 
-  DriverAuthViewModel(this._repository, this._fileUploadService) {
-    // Diagnóstico en constructor
+  DriverAuthViewModel(this._repository, this._fileUploadService);
+
+  /// Inicializar el ViewModel de forma segura después de la construcción
+  void initialize() {
     _diagnosticInit();
   }
 
@@ -108,10 +111,11 @@ class DriverAuthViewModel extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      // Verificar si la sesión del conductor está activa (no expirada por inactividad)
-      final isSessionActive = await DriverSessionService.isSessionActive();
-      if (!isSessionActive) {
-        print('⏰ Sesión de conductor expirada por inactividad (24h)');
+      // Verificar si hay una sesión activa de conductor con tokens válidos
+      final hasActiveSession =
+          await DriverSessionService.hasActiveDriverSession();
+      if (!hasActiveSession) {
+        print('⏰ No hay sesión activa de conductor o tokens expirados');
         _isAuthenticated = false;
         _currentDriver = null;
         _isLoading = false;
@@ -124,8 +128,8 @@ class DriverAuthViewModel extends ChangeNotifier {
       if (!isDriverMode) {
         print('ℹ️ Modo conductor no está activo');
 
-        // Intentar recuperar datos guardados del conductor para mostrar información
-        final driverData = await DriverSessionService.getDriverData();
+        // Verificar si hay datos guardados del conductor
+        final driverData = await DriverSessionService.getDriverUserData();
         if (driverData != null) {
           print(
             'ℹ️ Hay datos de conductor guardados, pero el modo está desactivado',
@@ -156,7 +160,7 @@ class DriverAuthViewModel extends ChangeNotifier {
             'lastCheck': DateTime.now().toIso8601String(),
           };
 
-          await DriverSessionService.saveDriverData(driverData);
+          await DriverSessionService.updateDriverUserData(driverData);
           print('💾 Datos de conductor actualizados en verificación de estado');
         }
 
@@ -165,11 +169,11 @@ class DriverAuthViewModel extends ChangeNotifier {
         print('⚠️ Error obteniendo perfil desde backend: $profileError');
 
         // Intentar recuperar desde datos guardados como fallback
-        final driverData = await DriverSessionService.getDriverData();
+        final driverData = await DriverSessionService.getDriverUserData();
         if (driverData != null && driverData.containsKey('id')) {
           print('🔄 Usando datos guardados como fallback');
-          // Aquí podríamos reconstruir un objeto DriverEntity básico si es necesario
           _isAuthenticated = true;
+          // Podríamos reconstruir un objeto DriverEntity básico aquí si es necesario
         } else {
           _isAuthenticated = false;
           _currentDriver = null;
@@ -307,37 +311,44 @@ class DriverAuthViewModel extends ChangeNotifier {
   // Login de conductor
   Future<bool> login(String dni, String password) async {
     try {
-      print('🔐 Iniciando login...');
+      print('🔐 Iniciando login de conductor...');
       _setLoading(true);
       clearError();
 
-      final driver = await _repository.login(dni, password);
-      _currentDriver = driver;
-      _isAuthenticated = true;
+      final result = await _repository.login(dni, password);
+      _currentDriver = result;
 
-      // Guardar datos del conductor para persistencia
-      if (driver != null) {
+      // Obtener tokens de las cookies después del login exitoso
+      final accessToken = await getAccessToken();
+
+      // Guardar tokens y datos del conductor para persistencia mejorada
+      if (_currentDriver != null && accessToken != null) {
         final driverData = {
-          'id': driver.id,
-          'nombreCompleto': driver.nombreCompleto,
-          'telefono': driver.telefono,
-          'fotoPerfil': driver.fotoPerfil,
+          'id': _currentDriver!.id,
+          'nombreCompleto': _currentDriver!.nombreCompleto,
+          'telefono': _currentDriver!.telefono,
+          'fotoPerfil': _currentDriver!.fotoPerfil,
           'lastLogin': DateTime.now().toIso8601String(),
         };
 
-        await DriverSessionService.saveDriverData(driverData);
-        print('💾 Datos de conductor guardados para persistencia mejorada');
+        // Guardar tokens específicos de conductor
+        await DriverSessionService.saveDriverTokens(
+          accessToken: accessToken,
+          refreshToken: accessToken, // Por ahora usar el mismo token
+          driverData: driverData,
+        );
+
+        print('💾 Tokens y datos de conductor guardados para persistencia');
       }
 
-      // Activar el modo conductor y registrar actividad
-      await DriverSessionService.activateDriverMode();
+      _isAuthenticated = true;
 
       // Activar también la sesión de usuario
       await UserSessionService.activateUserSession();
       print('👤 Sesión de usuario activada al iniciar sesión como conductor');
 
       _setLoading(false);
-      print('✅ Login exitoso');
+      print('✅ Login exitoso con persistencia de tokens');
       return true;
     } catch (e) {
       print('❌ Error en login: $e');
@@ -347,10 +358,11 @@ class DriverAuthViewModel extends ChangeNotifier {
     }
   }
 
-  // Logout de conductor
+  // Logout de conductor (solo cierra sesión de conductor, no afecta usuario)
   Future<void> logout() async {
     try {
       _setLoading(true);
+      print('🔒 Iniciando cierre de sesión de conductor...');
 
       // Primero intentar hacer logout en el backend
       try {
@@ -361,18 +373,20 @@ class DriverAuthViewModel extends ChangeNotifier {
         print('⚠️ Error en logout del backend: $e');
       }
 
-      // Limpiar la sesión del conductor
+      // Limpiar SOLO la sesión del conductor (NO afectar la sesión de usuario)
       await DriverSessionService.clearDriverSession();
+      print('🚗 Sesión de conductor limpiada');
 
-      // También limpiar la sesión de usuario si se está cerrando sesión desde el conductor
-      await UserSessionService.clearUserSession();
-      print('👤 Sesión de usuario también limpiada');
+      // NO limpiar la sesión de usuario - el usuario sigue logueado
+      print(
+        '👤 Sesión de usuario preservada (no afectada por logout de conductor)',
+      );
 
       // Siempre limpiar el estado local independientemente del resultado del backend
       _currentDriver = null;
       _isAuthenticated = false;
       clearError();
-      print('✅ Logout local completado');
+      print('✅ Logout de conductor completado - Usuario sigue autenticado');
     } catch (e) {
       // Manejar cualquier error pero aún así limpiar el estado local
       print('❌ Error general en logout: $e');
@@ -626,9 +640,11 @@ class DriverAuthViewModel extends ChangeNotifier {
       await prefs.setBool('user_session_active', true);
       print('💾 Estado de sesión de usuario guardado explícitamente');
 
-      // Actualizar estado local
+      // Actualizar estado local - usar addPostFrameCallback para evitar setState durante build
       _isAuthenticated = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
 
       print('✅ Cambio a modo pasajero exitoso');
       return true;

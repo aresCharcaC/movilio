@@ -11,6 +11,8 @@ import 'package:joya_express/presentation/modules/home/viewmodels/map_viewmodel.
 import 'package:joya_express/data/services/enhanced_vehicle_trip_service.dart';
 import 'package:joya_express/core/di/service_locator.dart';
 import 'package:joya_express/presentation/modules/home/viewmodels/ofertas_viewmodel.dart';
+import 'package:joya_express/core/services/auth_initialization_service.dart';
+import 'package:joya_express/data/services/driver_session_service.dart';
 import 'package:provider/provider.dart';
 import 'presentation/modules/routes/app_routes.dart';
 import 'presentation/providers/ride_provider.dart';
@@ -79,16 +81,26 @@ void main() async {
 
   // =========================================================
 
-  // ========== INICIALIZACIÓN DE AUTENTICACIÓN MANUAL ==========
+  // ========== INICIALIZACIÓN DE AUTENTICACIÓN MEJORADA ==========
+  print('🔐 Inicializando servicio de autenticación...');
+  final authInitService = AuthInitializationService();
+  final authInitResult = await authInitService.initializeAuth();
+
+  print('🔍 Resultado de inicialización: $authInitResult');
+
   final authViewModel = AuthViewModel(authRepository: authRepository);
 
-  try {
-    await authViewModel.loadCurrentUser();
-    print('✅ Usuario actual cargado');
-  } catch (e, stackTrace) {
-    print('⚠️ Error cargando usuario actual: $e');
-    print('Stack trace: $stackTrace');
+  // Solo cargar usuario si la inicialización indica que hay sesión activa
+  if (authInitResult.isAuthenticated) {
+    try {
+      await authViewModel.loadCurrentUser();
+      print('✅ Usuario actual cargado');
+    } catch (e, stackTrace) {
+      print('⚠️ Error cargando usuario actual: $e');
+      print('Stack trace: $stackTrace');
+    }
   }
+
   try {
     await authViewModel.initializeFromPersistedState();
     print('✅ Estado de autenticación inicializado');
@@ -117,8 +129,15 @@ void main() async {
 
         // ========== PROVIDERS CON INYECCIÓN DE DEPENDENCIAS ==========
         // DriverAuthViewModel usando service locator
-        ChangeNotifierProvider<DriverAuthViewModel>.value(
-          value: sl<DriverAuthViewModel>(),
+        ChangeNotifierProvider<DriverAuthViewModel>(
+          create: (_) {
+            final viewModel = sl<DriverAuthViewModel>();
+            // Inicializar de forma segura después de la construcción
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              viewModel.initialize();
+            });
+            return viewModel;
+          },
         ),
 
         // RideProvider usando service locator
@@ -136,39 +155,78 @@ void main() async {
   print('🎉 Joya Express iniciado correctamente');
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String _initialRoute = AppRoutes.welcome;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      print('🔄 Inicializando aplicación...');
+
+      // Determinar la ruta inicial sin acceder al contexto durante build
+      String initialRoute = AppRoutes.welcome;
+
+      // Verificar estado de autenticación de conductor usando servicios directamente
+      final hasActiveDriverSession =
+          await DriverSessionService.hasActiveDriverSession();
+      final isDriverModeActive =
+          await DriverSessionService.isDriverModeActive();
+
+      if (hasActiveDriverSession && isDriverModeActive) {
+        print('🚀 Sesión de conductor activa detectada');
+        initialRoute = AppRoutes.driverHome;
+      } else {
+        // Verificar sesión de usuario usando SharedPreferences directamente
+        final prefs = await SharedPreferences.getInstance();
+        final userSessionActive = prefs.getBool('user_session_active') ?? false;
+
+        if (userSessionActive) {
+          print('🚀 Sesión de usuario activa detectada');
+          initialRoute = AppRoutes.home;
+        } else {
+          print('🚀 No hay sesiones activas, mostrando bienvenida');
+          initialRoute = AppRoutes.welcome;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _initialRoute = initialRoute;
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      print('❌ Error inicializando aplicación: $e');
+      if (mounted) {
+        setState(() {
+          _initialRoute = AppRoutes.welcome;
+          _isInitialized = true;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Obténemos los ViewModels del Provider
-    final authViewModel = Provider.of<AuthViewModel>(context, listen: true);
-    final driverAuthViewModel = Provider.of<DriverAuthViewModel>(
-      context,
-      listen: true,
-    );
-    final driverHomeViewModel = Provider.of<DriverHomeViewModel>(
-      context,
-      listen: true,
-    );
-
-    // Lógica para decidir la ruta inicial
-    String initialRoute;
-
-    // Primero verificar si el modo conductor está activo
-    if (driverAuthViewModel.isAuthenticated) {
-      initialRoute = AppRoutes.driverHome;
-      print('🚀 Iniciando app en modo conductor (driverHome)');
-    }
-    // Luego verificar si hay sesión de usuario activa
-    else if (authViewModel.isAuthenticated) {
-      initialRoute = AppRoutes.home;
-      print('🚀 Iniciando app en modo pasajero (home)');
-    }
-    // Si no hay ninguna sesión activa, mostrar pantalla de bienvenida
-    else {
-      initialRoute = AppRoutes.welcome;
-      print('🚀 Iniciando app en pantalla de bienvenida');
+    if (!_isInitialized) {
+      return MaterialApp(
+        title: 'Joya Express',
+        debugShowCheckedModeBanner: false,
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
     }
 
     return MaterialApp(
@@ -188,10 +246,26 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute:
-          initialRoute, // Usar la ruta dinámica basada en el estado de autenticación
-      // Definimos las rutas de la aplicación
+      home: AppRoutes.routes[_initialRoute]!(context),
       routes: AppRoutes.routes,
+      onGenerateRoute: (RouteSettings settings) {
+        // Handle any route that's not defined in the routes map
+        final String? name = settings.name;
+        final WidgetBuilder? pageContentBuilder = AppRoutes.routes[name];
+
+        if (pageContentBuilder != null) {
+          return MaterialPageRoute<dynamic>(
+            builder: pageContentBuilder,
+            settings: settings,
+          );
+        }
+
+        // If route is not found, return to welcome screen
+        return MaterialPageRoute<dynamic>(
+          builder: (context) => AppRoutes.routes[AppRoutes.welcome]!(context),
+          settings: settings,
+        );
+      },
     );
   }
 }
