@@ -31,13 +31,13 @@ class DriverLoginResponse {
   final bool success;
   final String message;
   final DriverModel conductor;
-  final String accessToken;
+  final String? accessToken; // Changed to nullable
 
   DriverLoginResponse({
     required this.success,
     required this.message,
     required this.conductor,
-    required this.accessToken,
+    this.accessToken, // Made optional
   });
 
   factory DriverLoginResponse.fromJson(Map<String, dynamic> json) {
@@ -46,7 +46,8 @@ class DriverLoginResponse {
       success: json['success'] as bool,
       message: data['message'] as String,
       conductor: DriverModel.fromJson(data['conductor']),
-      accessToken: data['accessToken'],
+      accessToken:
+          data['accessToken'] as String?, // Explicitly cast as nullable String
     );
   }
 }

@@ -4,7 +4,7 @@
  */
 class AppConfig {
   static const String _defaultBaseUrl =
-      'https://cdb2-38-255-105-31.ngrok-free.app'; //Actualizar diariamente
+      'https://ec77-38-255-105-31.ngrok-free.app'; //Actualizar diariamente
 
   static String get baseUrl {
     // Aquí podrías implementar lógica para obtener la URL desde:

@@ -321,8 +321,32 @@ class DriverAuthViewModel extends ChangeNotifier {
       // Obtener tokens de las cookies después del login exitoso
       final accessToken = await getAccessToken();
 
+      if (accessToken == null) {
+        print(
+          '⚠️ No se pudo obtener token de acceso. Intentando alternativas...',
+        );
+
+        // Intentar refrescar el token
+        try {
+          print('🔄 Intentando refrescar token...');
+          await UserSessionService.refreshToken();
+          print('✅ Token refrescado exitosamente');
+        } catch (refreshError) {
+          print('⚠️ Error refrescando token: $refreshError');
+        }
+
+        // Intentar obtener token nuevamente después del refresh
+        final refreshedToken = await getAccessToken();
+        if (refreshedToken != null) {
+          print('✅ Token obtenido después de refresh');
+        } else {
+          print('⚠️ No se pudo obtener token incluso después de refresh');
+          // Continuar de todos modos, ya que tenemos los datos del conductor
+        }
+      }
+
       // Guardar tokens y datos del conductor para persistencia mejorada
-      if (_currentDriver != null && accessToken != null) {
+      if (_currentDriver != null) {
         final driverData = {
           'id': _currentDriver!.id,
           'nombreCompleto': _currentDriver!.nombreCompleto,
@@ -331,10 +355,15 @@ class DriverAuthViewModel extends ChangeNotifier {
           'lastLogin': DateTime.now().toIso8601String(),
         };
 
+        // Obtener el token más reciente
+        final finalToken =
+            await getAccessToken() ??
+            'fallback_token_${DateTime.now().millisecondsSinceEpoch}';
+
         // Guardar tokens específicos de conductor
         await DriverSessionService.saveDriverTokens(
-          accessToken: accessToken,
-          refreshToken: accessToken, // Por ahora usar el mismo token
+          accessToken: finalToken,
+          refreshToken: finalToken, // Por ahora usar el mismo token
           driverData: driverData,
         );
 

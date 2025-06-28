@@ -179,23 +179,38 @@ class _MyAppState extends State<MyApp> {
       // Determinar la ruta inicial sin acceder al contexto durante build
       String initialRoute = AppRoutes.welcome;
 
-      // Verificar estado de autenticación de conductor usando servicios directamente
-      final hasActiveDriverSession =
-          await DriverSessionService.hasActiveDriverSession();
-      final isDriverModeActive =
-          await DriverSessionService.isDriverModeActive();
+      // Verificar sesión de usuario primero (prioridad para modo pasajero)
+      final prefs = await SharedPreferences.getInstance();
+      final userSessionActive = prefs.getBool('user_session_active') ?? false;
 
-      if (hasActiveDriverSession && isDriverModeActive) {
-        print('🚀 Sesión de conductor activa detectada');
-        initialRoute = AppRoutes.driverHome;
-      } else {
-        // Verificar sesión de usuario usando SharedPreferences directamente
-        final prefs = await SharedPreferences.getInstance();
-        final userSessionActive = prefs.getBool('user_session_active') ?? false;
+      if (userSessionActive) {
+        print('🚀 Sesión de usuario activa detectada');
 
-        if (userSessionActive) {
-          print('🚀 Sesión de usuario activa detectada');
+        // Verificar si el modo conductor está activo (solo si hay sesión de usuario)
+        final hasActiveDriverSession =
+            await DriverSessionService.hasActiveDriverSession();
+        final isDriverModeActive =
+            await DriverSessionService.isDriverModeActive();
+
+        // Solo ir a modo conductor si ambas condiciones son verdaderas
+        if (hasActiveDriverSession && isDriverModeActive) {
+          print('🚗 Modo conductor activo, dirigiendo a pantalla de conductor');
+          initialRoute = AppRoutes.driverHome;
+        } else {
+          // Por defecto, ir a la pantalla de pasajero si hay sesión activa
+          print('👤 Modo pasajero activo o por defecto');
           initialRoute = AppRoutes.home;
+        }
+      } else {
+        // Verificar si hay sesión de conductor como fallback
+        final hasActiveDriverSession =
+            await DriverSessionService.hasActiveDriverSession();
+        final isDriverModeActive =
+            await DriverSessionService.isDriverModeActive();
+
+        if (hasActiveDriverSession && isDriverModeActive) {
+          print('🚗 Solo sesión de conductor activa detectada');
+          initialRoute = AppRoutes.driverHome;
         } else {
           print('🚀 No hay sesiones activas, mostrando bienvenida');
           initialRoute = AppRoutes.welcome;

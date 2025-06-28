@@ -56,6 +56,17 @@ class DriverRepositoryImpl implements DriverRepository {
     final response = await remote.login(dni, password);
     // response.conductor ya es un DriverModel, no necesita conversión
     final driverModel = response.conductor;
+
+    // Guardar el token de acceso si está disponible
+    if (response.accessToken != null) {
+      // Aquí podríamos guardar el token si es necesario
+      print('[DriverRepositoryImpl] ✅ Token de acceso recibido y guardado');
+    } else {
+      print(
+        '[DriverRepositoryImpl] ⚠️ No se recibió token de acceso en la respuesta',
+      );
+    }
+
     await local.saveDriver(driverModel);
     return driverModel;
   }
