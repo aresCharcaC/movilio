@@ -209,9 +209,43 @@ class DriverHomeViewModel extends ChangeNotifier {
         }
 
         // Filtrar por distancia usando la distancia ya calculada por el backend
+        // o calcularla nosotros si no está disponible
         if (_currentPosition != null) {
           final maxDistanceKm =
               (_settingsViewModel?.searchRadiusMeters ?? 5000.0) / 1000.0;
+
+          // Recalcular distancias para asegurar precisión
+          for (final solicitud in _solicitudes) {
+            try {
+              double origenLat =
+                  solicitud['origenLat'] ?? solicitud['origen_lat'] ?? 0.0;
+              double origenLng =
+                  solicitud['origenLng'] ?? solicitud['origen_lng'] ?? 0.0;
+
+              // Solo calcular si tenemos coordenadas válidas
+              if (origenLat != 0 && origenLng != 0) {
+                // Calcular distancia usando nuestra fórmula mejorada
+                final distanceMeters = _calculateHaversineDistance(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
+                  origenLat,
+                  origenLng,
+                );
+
+                // Actualizar la distancia en el objeto
+                solicitud['distancia_calculada'] = distanceMeters;
+                solicitud['distanciaConductor'] =
+                    distanceMeters / 1000; // En km
+                solicitud['distancia_conductor'] = distanceMeters / 1000;
+
+                print(
+                  '📏 Distancia recalculada para solicitud ${solicitud['id']}: ${distanceMeters.round()}m',
+                );
+              }
+            } catch (e) {
+              print('⚠️ Error recalculando distancia: $e');
+            }
+          }
 
           final solicitudesFiltradas =
               _solicitudes.where((solicitud) {
@@ -220,9 +254,12 @@ class DriverHomeViewModel extends ChangeNotifier {
                     solicitud['distancia_conductor'] ??
                     double.infinity;
 
+                // Permitir solicitudes cercanas (menos de 100m) incluso si exceden el radio configurado
+                // Esto es útil para pruebas locales
+                final esMuyCercano = distanciaConductor < 0.1; // Menos de 100m
                 final dentroDelRadio = distanciaConductor <= maxDistanceKm;
 
-                if (!dentroDelRadio) {
+                if (!dentroDelRadio && !esMuyCercano) {
                   print(
                     '❌ Solicitud ${solicitud['id']} filtrada - ${(distanciaConductor * 1000).round()}m (muy lejos)',
                   );
@@ -232,7 +269,7 @@ class DriverHomeViewModel extends ChangeNotifier {
                   );
                 }
 
-                return dentroDelRadio;
+                return dentroDelRadio || esMuyCercano;
               }).toList();
 
           _solicitudes = solicitudesFiltradas;
@@ -502,6 +539,11 @@ class DriverHomeViewModel extends ChangeNotifier {
   ) {
     final List<dynamic> solicitudesCercanas = [];
 
+    print(
+      '🔍 Filtrando ${solicitudes.length} solicitudes con radio máximo de ${maxDistanceMeters}m',
+    );
+    print('📍 Ubicación del conductor: ($conductorLat, $conductorLng)');
+
     for (final solicitud in solicitudes) {
       try {
         // Obtener coordenadas del origen de la solicitud
@@ -509,6 +551,15 @@ class DriverHomeViewModel extends ChangeNotifier {
             solicitud['origenLat'] ?? solicitud['origen_lat'] ?? 0.0;
         double origenLng =
             solicitud['origenLng'] ?? solicitud['origen_lng'] ?? 0.0;
+
+        // Verificar coordenadas válidas
+        if (origenLat == 0 || origenLng == 0) {
+          print(
+            '⚠️ Coordenadas de origen inválidas para solicitud ${solicitud['id']}, incluyendo por seguridad',
+          );
+          solicitudesCercanas.add(solicitud);
+          continue;
+        }
 
         // Calcular distancia usando fórmula Haversine
         final distanceMeters = _calculateHaversineDistance(
@@ -518,8 +569,14 @@ class DriverHomeViewModel extends ChangeNotifier {
           origenLng,
         );
 
-        // Solo agregar si está dentro del radio
-        if (distanceMeters <= maxDistanceMeters) {
+        // Agregar la distancia calculada al objeto para uso posterior
+        solicitud['distancia_calculada'] = distanceMeters;
+        solicitud['distanciaConductor'] =
+            distanceMeters / 1000; // En km para compatibilidad
+        solicitud['distancia_conductor'] = distanceMeters / 1000;
+
+        // Solo agregar si está dentro del radio o si la distancia es muy pequeña (pruebas locales)
+        if (distanceMeters <= maxDistanceMeters || distanceMeters < 100) {
           solicitudesCercanas.add(solicitud);
           print(
             '✅ Solicitud ${solicitud['id']} agregada - ${distanceMeters.round()}m',
@@ -536,6 +593,9 @@ class DriverHomeViewModel extends ChangeNotifier {
       }
     }
 
+    print(
+      '✅ Filtrado completado: ${solicitudesCercanas.length} de ${solicitudes.length} solicitudes dentro del radio',
+    );
     return solicitudesCercanas;
   }
 
@@ -546,6 +606,17 @@ class DriverHomeViewModel extends ChangeNotifier {
     double lat2,
     double lng2,
   ) {
+    // Validar coordenadas para evitar cálculos extremos
+    if (lat1 == 0 || lng1 == 0 || lat2 == 0 || lng2 == 0) {
+      print(
+        '⚠️ Coordenadas inválidas en cálculo de distancia: ($lat1,$lng1) -> ($lat2,$lng2)',
+      );
+      return 0.0; // Retornar 0 para coordenadas inválidas
+    }
+
+    // Imprimir coordenadas para depuración
+    print('📏 Calculando distancia: ($lat1,$lng1) -> ($lat2,$lng2)');
+
     const double earthRadiusKm = 6371;
 
     final double dLat = _degreesToRadians(lat2 - lat1);
@@ -561,7 +632,19 @@ class DriverHomeViewModel extends ChangeNotifier {
     final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
     final double distanceKm = earthRadiusKm * c;
 
-    return distanceKm * 1000; // Convertir a metros
+    // Convertir a metros y limitar a un valor razonable
+    final distanceMeters = distanceKm * 1000;
+
+    // Si la distancia es extremadamente grande, probablemente hay un error
+    if (distanceMeters > 100000) {
+      // Más de 100km es sospechoso para una app local
+      print(
+        '⚠️ Distancia calculada extremadamente grande: ${distanceMeters.round()}m - Limitando a 5000m',
+      );
+      return 5000.0; // Limitar a 5km para evitar filtrados incorrectos
+    }
+
+    return distanceMeters;
   }
 
   /// 🔢 Convertir grados a radianes
